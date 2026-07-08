@@ -12,7 +12,8 @@
   const els = {
     meta: $('meta'), start: $('startBin'), wh: $('warehouse'), enrich: $('enrich'),
     build: $('build'), status: $('status'), stops: $('stops'), mini: $('mini'),
-    pasteBox: $('pasteBox'), parsePaste: $('parsePaste')
+    pasteBox: $('pasteBox'), parsePaste: $('parsePaste'),
+    types: $('types'), hours: $('hours'), fetchAtlas: $('fetchAtlas')
   };
 
   // ---- Load payload ---------------------------------------------------------
@@ -24,13 +25,53 @@
     els.wh.value = warehouseId;
     els.start.value = p.startBin || '';
     if (typeof p.enrich === 'boolean') els.enrich.checked = p.enrich;
-    updateMeta();
-    if (currentErrors.length) build();
-    else {
-      els.stops.innerHTML = '<div class="empty">No errors were auto-pulled. Paste the ATLAS CSV/TSV export above, or go back to the dashboard and click “Pull errors &amp; build path”.</div>';
+    if (p.types) els.types.value = p.types;
+    if (p.hoursBack) els.hours.value = p.hoursBack;
+
+    if (p.mode === 'api') {
+      fetchFromAtlas(); // pull errors directly, then auto-build
+    } else if (currentErrors.length) {
+      updateMeta();
+      build();
+    } else {
+      updateMeta();
+      els.stops.innerHTML = '<div class="empty">No errors loaded. Click <b>Fetch from ATLAS</b> above, paste the CSV/TSV export, or go back to the dashboard and click “Pull errors &amp; build path”.</div>';
       $('pasteWrap').open = true;
     }
   });
+
+  // ---- Direct ATLAS pull (OpenSearch API via background) --------------------
+
+  els.fetchAtlas.addEventListener('click', fetchFromAtlas);
+
+  async function fetchFromAtlas() {
+    warehouseId = els.wh.value.trim() || 'IND8';
+    const types = els.types.value;
+    const hoursBack = parseInt(els.hours.value, 10) || 12;
+    els.status.textContent = 'Querying ATLAS…';
+    els.fetchAtlas.disabled = true;
+    try {
+      const resp = await browser.runtime.sendMessage({
+        type: 'atlasSearch',
+        opts: { warehouseId, types, hoursBack }
+      });
+      if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
+      currentErrors = resp.errors || [];
+      updateMeta();
+      if (!currentErrors.length) {
+        els.status.textContent = `ATLAS returned 0 usable errors for that window (matched ${resp.total || 0} docs).`;
+        els.stops.innerHTML = '<div class="empty">No errors in that time window. Widen the lookback, change the error type, or use the paste fallback.</div>';
+      } else {
+        els.status.textContent = `Pulled ${currentErrors.length} errors from ATLAS.`;
+        build();
+      }
+    } catch (err) {
+      els.status.textContent = 'ATLAS error: ' + err.message + ' — try the CSV/TSV paste fallback.';
+      $('pasteWrap').open = true;
+    } finally {
+      els.fetchAtlas.disabled = false;
+    }
+  }
 
   function updateMeta() {
     const rejects = currentErrors.filter(e => e.source === 'reject').length;

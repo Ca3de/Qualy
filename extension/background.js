@@ -29,6 +29,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch(err => sendResponse({ error: err.message }));
       return true;
 
+    case 'atlasSearch':
+      fetchAtlasErrors(message.opts || {})
+        .then(sendResponse)
+        .catch(err => { logError('atlasSearch', err); sendResponse({ error: err.message }); });
+      return true; // async
+
     case 'clearCache':
       fcCache.clear();
       sendResponse({ ok: true });
@@ -71,6 +77,131 @@ async function enrichError(error, warehouseId) {
   const q = error.fnsku || error.asin;
   if (!q) return { error: 'no fnsku/asin' };
   return fetchFCResearch(q, warehouseId || 'IND8');
+}
+
+// ---- ATLAS (OpenSearch) direct API -----------------------------------------
+
+const ATLAS_SEARCH_URL =
+  'https://moc.prod.atlas-opensearch.qubit.amazon.dev/_dashboards/internal/search/opensearch';
+
+// Maps an error-type selection to an OpenSearch query_string clause.
+function typeExpr(types) {
+  switch ((types || 'both').toLowerCase()) {
+    case 'short':
+    case 'shorts': return 'SHORT';
+    case 'reject':
+    case 'rejects': return 'REJECT';
+    default: return 'SHORT OR REJECT';
+  }
+}
+
+/**
+ * opts: { warehouseId, fromISO, toISO, hoursBack, types }
+ * Queries the ATLAS `atlas*` index directly (same session cookies) and returns
+ * normalised error records: { errors, total, from, to, query }.
+ */
+async function fetchAtlasErrors(opts) {
+  const warehouseId = opts.warehouseId || 'IND8';
+  const to = opts.toISO ? new Date(opts.toISO) : new Date();
+  const from = opts.fromISO
+    ? new Date(opts.fromISO)
+    : new Date(to.getTime() - (opts.hoursBack || 12) * 3600 * 1000);
+  const fromISO = from.toISOString();
+  const toISO = to.toISOString();
+  const qs = `warehouse_id:${warehouseId} AND type:(${typeExpr(opts.types)})`;
+
+  const body = {
+    params: {
+      index: 'atlas*',
+      body: {
+        version: true,
+        size: 5000,
+        sort: [{ timestamp: { order: 'desc', unmapped_type: 'boolean' } }],
+        _source: { excludes: [] },
+        docvalue_fields: [{ field: 'timestamp', format: 'date_time' }],
+        query: {
+          bool: {
+            must: [{
+              query_string: { query: qs, analyze_wildcard: true, time_zone: 'America/New_York' }
+            }],
+            filter: [{
+              range: {
+                timestamp: { gte: fromISO, lte: toISO, format: 'strict_date_optional_time' }
+              }
+            }],
+            should: [], must_not: []
+          }
+        }
+      }
+    }
+  };
+
+  log(`ATLAS search: ${qs} [${fromISO} .. ${toISO}]`);
+  const resp = await fetch(ATLAS_SEARCH_URL, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'osd-xsrf': 'true'
+    },
+    body: JSON.stringify(body)
+  });
+
+  log(`ATLAS status: ${resp.status}`);
+  if (resp.status === 401 || resp.status === 403) {
+    return { error: 'Not authenticated to ATLAS. Open an ATLAS dashboard (logged in) in another tab, then retry.' };
+  }
+  if (!resp.ok) {
+    return { error: `ATLAS search failed (HTTP ${resp.status}). Try the scrape/paste fallback.` };
+  }
+
+  const json = await resp.json();
+  const hits = (json.rawResponse && json.rawResponse.hits && json.rawResponse.hits.hits) ||
+               (json.hits && json.hits.hits) ||
+               (json.body && json.body.hits && json.body.hits.hits) || [];
+  const totalRaw = (json.rawResponse && json.rawResponse.hits && json.rawResponse.hits.total);
+  const total = (totalRaw && typeof totalRaw === 'object') ? totalRaw.value : (totalRaw || hits.length);
+
+  const errors = [];
+  const seen = new Set();
+  for (const h of hits) {
+    const s = h._source || {};
+    const bin = firstStr(s.bin_raw, s.bin);
+    const fnsku = firstStr(s.fnsku);
+    const asin = firstStr(s.asin_raw, s.asin);
+    if (!bin || (!fnsku && !asin)) continue;
+
+    const type = (firstStr(s.type) || '').toUpperCase();
+    const rejectReason = firstStr(s.reject_reason);
+    const rec = {
+      bin,
+      fnsku: fnsku || '',
+      asin: asin || '',
+      itemName: firstStr(s.item_name, s.title) || '',
+      quantity: s.quantity != null ? String(s.quantity) : '',
+      rejectReason: rejectReason || '',
+      binding: firstStr(s.binding_name, s.binding) || '',
+      time: firstStr(s.timestamp, s['@timestamp']) || '',
+      source: (type === 'REJECT' || rejectReason) ? 'reject' : 'short'
+    };
+    const k = `${rec.bin}|${rec.fnsku || rec.asin}|${rec.time}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    errors.push(rec);
+  }
+
+  log(`ATLAS returned ${hits.length} hits, ${errors.length} usable errors (total match ${total})`);
+  return { errors, total, from: fromISO, to: toISO, query: qs };
+}
+
+function firstStr(...vals) {
+  for (const v of vals) {
+    if (v == null) continue;
+    const s = Array.isArray(v) ? v[0] : v;
+    if (s != null && String(s).trim() !== '') return String(s).trim();
+  }
+  return '';
 }
 
 // ---- FC Research -----------------------------------------------------------

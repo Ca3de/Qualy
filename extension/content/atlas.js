@@ -148,8 +148,21 @@
       <div class="qualy-bd">
         <label class="qualy-lbl">Start bin / aisle</label>
         <input id="qualy-start" type="text" placeholder="e.g. P-1-A200C300" autocomplete="off" />
+        <div class="qualy-inline">
+          <label class="qualy-lbl2">Errors
+            <select id="qualy-types">
+              <option value="both">Shorts + Rejects</option>
+              <option value="short">Shorts</option>
+              <option value="reject">Rejects</option>
+            </select>
+          </label>
+          <label class="qualy-lbl2">Lookback hrs
+            <input id="qualy-hours" type="number" min="1" max="168" value="12" />
+          </label>
+        </div>
         <label class="qualy-chk"><input id="qualy-enrich" type="checkbox" checked /> Pull FC Research images</label>
-        <button id="qualy-go" class="qualy-btn">Pull errors &amp; build path</button>
+        <button id="qualy-go" class="qualy-btn">Pull from ATLAS &amp; build path</button>
+        <a id="qualy-scrape" class="qualy-alt" href="#">or scrape this page instead</a>
         <div id="qualy-status" class="qualy-status">Ready.</div>
       </div>`;
     document.body.appendChild(panel);
@@ -159,28 +172,43 @@
       panel.classList.toggle('qualy-collapsed');
     });
 
-    panel.querySelector('#qualy-go').addEventListener('click', async () => {
-      const startBin = panel.querySelector('#qualy-start').value.trim();
-      const enrich = panel.querySelector('#qualy-enrich').checked;
-      status.textContent = 'Scraping errors…';
-
-      const errors = scrapeErrors();
-      const warehouseId = detectWarehouseId();
-
-      if (!errors.length) {
-        status.innerHTML = 'No rows scraped here. Opening path page — you can paste the CSV export there.';
-      } else {
-        status.textContent = `Found ${errors.length} errors. Opening path…`;
-      }
-
-      const payload = { errors, startBin, warehouseId, enrich, ts: Date.now() };
+    async function openPath(payload) {
       try {
-        await browser.storage.local.set({ qualyPayload: payload });
-        const url = browser.runtime.getURL('page/path.html');
-        window.open(url, '_blank');
+        await browser.storage.local.set({ qualyPayload: { ...payload, ts: Date.now() } });
+        window.open(browser.runtime.getURL('page/path.html'), '_blank');
       } catch (err) {
         status.textContent = 'Error: ' + err.message;
       }
+    }
+
+    // Primary: direct ATLAS API pull (done on the path page).
+    panel.querySelector('#qualy-go').addEventListener('click', () => {
+      status.textContent = 'Opening path (ATLAS pull)…';
+      openPath({
+        mode: 'api',
+        startBin: panel.querySelector('#qualy-start').value.trim(),
+        warehouseId: detectWarehouseId(),
+        types: panel.querySelector('#qualy-types').value,
+        hoursBack: parseInt(panel.querySelector('#qualy-hours').value, 10) || 12,
+        enrich: panel.querySelector('#qualy-enrich').checked
+      });
+    });
+
+    // Secondary: scrape the currently-rendered dashboard table.
+    panel.querySelector('#qualy-scrape').addEventListener('click', (e) => {
+      e.preventDefault();
+      status.textContent = 'Scraping this page…';
+      const errors = scrapeErrors();
+      status.textContent = errors.length
+        ? `Scraped ${errors.length} errors. Opening path…`
+        : 'No rows scraped — opening path (use paste fallback).';
+      openPath({
+        mode: 'rows',
+        errors,
+        startBin: panel.querySelector('#qualy-start').value.trim(),
+        warehouseId: detectWarehouseId(),
+        enrich: panel.querySelector('#qualy-enrich').checked
+      });
     });
 
     // Restore last-used start bin.

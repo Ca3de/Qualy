@@ -79,6 +79,18 @@
 }
 #qualy-panel .qualy-btn:hover { background: #ffac31; }
 
+#qualy-panel .qualy-inline { display: flex; gap: 8px; }
+#qualy-panel .qualy-lbl2 {
+  flex: 1; display: flex; flex-direction: column; gap: 3px;
+  font-size: 10px; font-weight: 600; color: #545b64; text-transform: uppercase; letter-spacing: 0.03em;
+}
+#qualy-panel select, #qualy-panel input[type="number"] {
+  width: 100%; box-sizing: border-box; padding: 6px 6px;
+  border: 1px solid #aab7b8; border-radius: 4px; font-size: 12px;
+}
+#qualy-panel .qualy-alt { font-size: 11px; color: #0073bb; text-decoration: none; text-align: center; }
+#qualy-panel .qualy-alt:hover { text-decoration: underline; }
+
 #qualy-panel .qualy-status {
   font-size: 11px;
   color: #545b64;

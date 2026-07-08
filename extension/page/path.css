@@ -47,6 +47,10 @@ body {
   padding: 7px 8px; border: 1px solid #aab7b8; border-radius: 4px; font-size: 14px; min-width: 180px;
 }
 .ctrl-row input[size] { min-width: 0; }
+.ctrl-row.sub { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.ctrl-row.sub .sub-lbl { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ctrl-row select { padding: 7px 8px; border: 1px solid #aab7b8; border-radius: 4px; font-size: 14px; }
+.ctrl-row input[type="number"] { padding: 7px 8px; border: 1px solid #aab7b8; border-radius: 4px; font-size: 14px; width: 70px; }
 
 .btn {
   padding: 8px 14px; border: 1px solid #aab7b8; border-radius: 4px; background: #fff;

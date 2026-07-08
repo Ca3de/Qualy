@@ -21,17 +21,32 @@ ATLAS dashboard (Rejects / Shorts)
 ## How each piece works
 
 ### 1. ATLAS (errors)
-Runs a content script on
-`moc.prod.atlas-opensearch.qubit.amazon.dev/_dashboards/*`. It scrapes the
-saved-search table, mapping **columns by header name** (so it survives column
-reordering) and preferring the untruncated `bin_raw` / `asin_raw` columns. Two
-dashboards are supported:
+Three ways to pull, in order of robustness:
 
-- **Pick Rejects** — `asin, fnsku, bin_raw, quantity, reject_reason, item_name, binding_name`
-- **Unverified Pick Shorts** — `warehouse_id, bin, fnsku, item_name, quantity, asin_raw`
+1. **Direct API (default).** The background script POSTs to
+   `…/_dashboards/internal/search/opensearch` (same session cookies) against the
+   `atlas*` index:
+   ```
+   query_string: warehouse_id:{WH} AND type:(SHORT OR REJECT)
+   filter:       timestamp within the lookback window
+   size: 5000, sort: timestamp desc
+   ```
+   It reads `hits.hits[]._source` for `bin`/`bin_raw`, `fnsku`, `asin`,
+   `item_name`, `quantity`, `reject_reason`, `type`. No dashboard rendering or
+   pagination needed, and it gets **both** error feeds at once. You choose the
+   error type (Shorts / Rejects / both) and lookback hours in the UI.
+2. **Scrape (fallback).** A content script on
+   `moc.prod.atlas-opensearch.qubit.amazon.dev/_dashboards/*` scrapes the
+   rendered saved-search table, mapping **columns by header name** and preferring
+   the untruncated `bin_raw` / `asin_raw` columns. Supported dashboards:
+   - **Pick Rejects** — `asin, fnsku, bin_raw, quantity, reject_reason, item_name, binding_name`
+   - **Unverified Pick Shorts** — `warehouse_id, bin, fnsku, item_name, quantity, asin_raw`
+3. **CSV/TSV paste (last resort).** Paste the dashboard's CSV export into the
+   Pick Path page.
 
-If a page's table can't be scraped (virtualised grid, etc.), the Pick Path page
-has a **CSV/TSV paste box** as a fallback — paste the dashboard's CSV export.
+> The Shorts feed is confirmed as `type:SHORT`; Rejects is assumed `type:REJECT`.
+> If your reject rows use a different `type` value, switch to "Shorts only" or
+> use the scrape/paste path and tell me the value to correct the default.
 
 ### 2. FC Research (images)
 The background script POSTs to
@@ -101,5 +116,4 @@ extension/
 ## Roadmap
 
 - Swap the serpentine heuristic for an exact route once the IND8 mod map lands.
-- Optional direct ATLAS API mode (`/_dashboards/internal/search/opensearch`)
-  to pull errors without the dashboard open.
+- Confirm the Rejects `type` value (assumed `REJECT`) against live data.
