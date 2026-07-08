@@ -182,6 +182,8 @@ async function fetchAtlasErrors(opts) {
       quantity: s.quantity != null ? String(s.quantity) : '',
       rejectReason: rejectReason || '',
       binding: firstStr(s.binding_name, s.binding) || '',
+      aa: firstStr(s.user_id, s.user_login, s.login, s.associate_id, s.operator_id),
+      lpn: pickLpn(s),
       time: firstStr(s.timestamp, s['@timestamp']) || '',
       source: (type === 'REJECT' || rejectReason) ? 'reject' : 'short'
     };
@@ -193,6 +195,23 @@ async function fetchAtlasErrors(opts) {
 
   log(`ATLAS returned ${hits.length} hits, ${errors.length} usable errors (total match ${total})`);
   return { errors, total, from: fromISO, to: toISO, query: qs };
+}
+
+// Best-effort LPN pull across likely ATLAS field names (top-level + a few
+// nested). Confirm the real field once a sample _source is available.
+function pickLpn(s) {
+  const direct = firstStr(
+    s.lpn, s.LPN, s.pick_lpn, s.from_lpn, s.source_lpn, s.container_lpn,
+    s.license_plate, s.license_plate_number, s.container_id, s.tote_id,
+    s.scannable_lpn, s.fc_sku, s.fcsku
+  );
+  if (direct) return direct;
+  const nested = [s.previous_pick, s.previous_stow].filter(Boolean);
+  for (const n of nested) {
+    const v = firstStr(n.lpn, n.container_id, n.from_lpn);
+    if (v) return v;
+  }
+  return '';
 }
 
 function firstStr(...vals) {

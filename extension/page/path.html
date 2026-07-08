@@ -51,10 +51,21 @@
   </section>
 
   <section class="mini" id="mini"></section>
+
+  <div class="confirm-bar" id="confirmBar" hidden>
+    <button id="startConfirm" class="btn primary big">▶ Start confirmation walk</button>
+    <span class="confirm-hint">Steps through each stop in route order; produces a downloadable report.</span>
+  </div>
+
   <section id="stops" class="stops"></section>
   <footer class="ft">
     Serpentine heuristic (v1) — swap in the IND8 mod map later for an exact route.
   </footer>
+
+  <!-- Guided confirmation overlay -->
+  <div id="overlay" class="overlay" hidden>
+    <div class="ov-card" id="ovCard"><!-- filled by JS --></div>
+  </div>
 
   <script src="path.js"></script>
 </body>

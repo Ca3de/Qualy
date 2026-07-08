@@ -28,7 +28,12 @@
     item_name: 'itemName',
     quantity: 'quantity',
     reject_reason: 'rejectReason',
-    binding_name: 'binding'
+    binding_name: 'binding',
+    user_id: 'aa',
+    user_login: 'aa',
+    user_: 'aa',
+    login: 'aa',
+    lpn: 'lpn'
   };
 
   function normHeader(text) {
@@ -106,6 +111,8 @@
           quantity: rec.quantity || '',
           rejectReason: rec.rejectReason || '',
           binding: rec.binding || '',
+          aa: rec.aa || '',
+          lpn: rec.lpn || '',
           time: rec.time || rec.timestamp || '',
           source: rec.rejectReason ? 'reject' : 'short'
         });

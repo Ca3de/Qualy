@@ -9,13 +9,15 @@ location.
 ## Pipeline
 
 ```
-ATLAS dashboard (Rejects / Shorts)
-   → scrape rows: bin_raw, fnsku, asin, item_name, quantity, reject_reason
+ATLAS atlas* index (Rejects / Shorts)
+   → errors: bin, fnsku, asin, item_name, quantity, reject_reason, AA (user_id), LPN
         → FC Research  POST /{WH}/results/product  body s={fnsku}
              → item image (m.media-amazon.com) + title / weight / dimensions
         → parse bin codes (P-1-A241F363 → module/floor/aisle/slot)
              → serpentine route from your start bin
                   → Pick Path page: ordered stops, images, FC Research + Rodeo links
+                       → Confirmation walk: step each stop, confirm/deny (+reason)
+                            → downloadable .md verification report
 ```
 
 ## How each piece works
@@ -58,8 +60,15 @@ fragment for:
   data URL so it renders even under the page CSP), and
 - ASIN, Title, Weight, Dimensions, Binding.
 
-> ATLAS exposes FNSKU/ASIN rather than LPN, and FC Research's `s=` accepts
-> either — so the lookup keys off the FNSKU (falling back to ASIN).
+> FC Research's `s=` accepts FNSKU/ASIN/LPN — the image lookup keys off the
+> FNSKU (falling back to ASIN).
+
+### 2b. AA + LPN (who + which unit)
+From the same ATLAS `_source` the extension also reads the **AA** (associate
+login, field `user_id`) and the **LPN**. The AA field is confirmed; the LPN
+field name is pulled best-effort across likely keys (`lpn`, `pick_lpn`,
+`from_lpn`, `license_plate`, `container_id`, …). Both appear on the stop cards
+and in the confirmation walk / report.
 
 ### 3. Pathfinding (route)
 `lib/binParser.js` decodes bins like `P-1-A241F363` into
@@ -75,13 +84,29 @@ No warehouse map is needed. When a real IND8 mod/aisle adjacency map is
 available, only `orderAisles()` in `pathfinding.js` has to change for an exact
 route.
 
+### 4. Confirmation walk + report
+Once a route is built, **Start confirmation walk** steps through the stops one
+at a time. Each card shows the next location, error type (reject/short), LPN,
+AA, item image + details, and two actions:
+
+- **Confirm error** — records it as a real error.
+- **Deny** — prompts for a reason, then records it.
+
+After the last stop, a summary appears with a **Download report (.md)** button.
+The report lists every checked item (result, bin, aisle, error type, LPN, AA,
+ASIN/FNSKU, item, qty, reason) plus confirmed/denied counts.
+
 ## Usage
 
-1. Open an ATLAS **Rejects** or **Shorts** dashboard (buttons in the popup).
+1. Open an ATLAS **Rejects** or **Shorts** dashboard (buttons in the popup) so
+   you're authenticated to ATLAS.
 2. In the floating **🧭 Qualy Pick Path** panel, type a start bin
-   (e.g. `P-1-A200C300`) and click **Pull errors & build path**.
+   (e.g. `P-1-A200C300`), pick error type + lookback, and click
+   **Pull from ATLAS & build path**.
 3. The Pick Path tab opens with the ordered stops: bin, item image, item name,
-   ASIN/FNSKU, quantity, reject reason, and FC Research / Rodeo links.
+   LPN, AA, ASIN/FNSKU, quantity, reject reason, FC Research / Rodeo links.
+4. Click **Start confirmation walk**, confirm/deny each stop, then download the
+   `.md` report.
 
 ## Install (Firefox, temporary)
 

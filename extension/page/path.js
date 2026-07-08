@@ -8,6 +8,8 @@
   const $ = (id) => document.getElementById(id);
   let currentErrors = [];
   let warehouseId = 'IND8';
+  let lastRoute = null;          // most recently built route
+  let confirmState = null;       // { i, results:[] } during a confirmation walk
 
   const els = {
     meta: $('meta'), start: $('startBin'), wh: $('warehouse'), enrich: $('enrich'),
@@ -110,6 +112,10 @@
   // ---- Render ---------------------------------------------------------------
 
   function render(route, startBin) {
+    lastRoute = route;
+    const bar = $('confirmBar');
+    if (bar) bar.hidden = route.stops.length === 0;
+
     // Mini aisle strip (unique aisles in visit order).
     const aisleSeq = [];
     for (const s of route.stops) {
@@ -174,7 +180,8 @@
           ${badge}
         </div>
         ${name ? `<div class="name">${escapeHtml(name)}</div>` : ''}
-        <div class="kv">${qty}<b>ASIN</b> ${escapeHtml(it.asin || fc.asin || '—')} · <b>FNSKU</b> ${escapeHtml(it.fnsku || '—')}</div>
+        <div class="kv">${qty}<b>LPN</b> ${escapeHtml(it.lpn || '—')} · <b>AA</b> ${escapeHtml(it.aa || '—')}</div>
+        <div class="kv"><b>ASIN</b> ${escapeHtml(it.asin || fc.asin || '—')} · <b>FNSKU</b> ${escapeHtml(it.fnsku || '—')}</div>
         ${details.length ? `<div class="kv">${details.join(' · ')}</div>` : ''}
         ${reason}
         <div class="links">
@@ -183,6 +190,206 @@
         </div>
       </div>`;
     return wrap;
+  }
+
+  // ---- Guided confirmation walk --------------------------------------------
+
+  document.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'startConfirm') startConfirm();
+  });
+
+  function startConfirm() {
+    if (!lastRoute || !lastRoute.stops.length) return;
+    confirmState = { i: 0, results: [] };
+    $('overlay').hidden = false;
+    document.body.style.overflow = 'hidden';
+    renderConfirmStep();
+  }
+
+  function closeConfirm() {
+    $('overlay').hidden = true;
+    document.body.style.overflow = '';
+    confirmState = null;
+  }
+
+  function renderConfirmStep() {
+    const stops = lastRoute.stops;
+    const i = confirmState.i;
+    if (i >= stops.length) return renderConfirmSummary();
+
+    const s = stops[i];
+    const it = s.item || {};
+    const fc = s.fc || {};
+    const img = fc.imageDataUrl || fc.imageUrl;
+    const isReject = it.source === 'reject';
+    const name = it.itemName || fc.title || '';
+
+    $('ovCard').innerHTML = `
+      <div class="ov-top">
+        <span class="ov-prog">Location ${i + 1} of ${stops.length}</span>
+        <button class="ov-x" id="ovClose" title="Exit">✕</button>
+      </div>
+      <div class="ov-bin">${escapeHtml(s.bin)}</div>
+      <div class="ov-sub">aisle ${escapeHtml(s.aisle || '?')}${s.slot != null ? ' · slot ' + s.slot : ''}
+        <span class="badge ${isReject ? 'reject' : 'short'}">${isReject ? 'REJECT' : 'SHORT'}</span>
+      </div>
+      <div class="ov-body">
+        ${img ? `<img class="ov-img" src="${escapeAttr(img)}" alt="" />`
+              : `<div class="ov-img ph">no image</div>`}
+        <div class="ov-info">
+          ${name ? `<div class="ov-name">${escapeHtml(name)}</div>` : ''}
+          <div class="ov-kv"><span>LPN</span><b>${escapeHtml(it.lpn || '—')}</b></div>
+          <div class="ov-kv"><span>AA (login)</span><b>${escapeHtml(it.aa || '—')}</b></div>
+          <div class="ov-kv"><span>Qty</span><b>${escapeHtml(String(it.quantity || '—'))}</b></div>
+          <div class="ov-kv"><span>ASIN / FNSKU</span><b>${escapeHtml(it.asin || fc.asin || '—')} / ${escapeHtml(it.fnsku || '—')}</b></div>
+          ${it.rejectReason ? `<div class="ov-kv"><span>Reject reason</span><b>${escapeHtml(it.rejectReason)}</b></div>` : ''}
+        </div>
+      </div>
+      <div class="ov-actions" id="ovActions">
+        <button class="btn deny" id="ovDeny">✕ Deny</button>
+        <button class="btn primary confirm" id="ovConfirm">✓ Confirm error</button>
+      </div>
+      <div class="ov-deny" id="ovDenyBox" hidden>
+        <label>Reason for denial</label>
+        <input id="ovReason" type="text" placeholder="e.g. item present and scannable" />
+        <div class="ov-deny-actions">
+          <button class="btn" id="ovDenyCancel">Back</button>
+          <button class="btn primary" id="ovDenySave">Save denial</button>
+        </div>
+      </div>`;
+
+    $('ovClose').onclick = () => confirmExitGuard();
+    $('ovConfirm').onclick = () => recordDecision('confirmed', '');
+    $('ovDeny').onclick = () => {
+      $('ovActions').hidden = true;
+      $('ovDenyBox').hidden = false;
+      $('ovReason').focus();
+    };
+    $('ovDenyCancel').onclick = () => {
+      $('ovDenyBox').hidden = true;
+      $('ovActions').hidden = false;
+    };
+    $('ovDenySave').onclick = () => {
+      const reason = $('ovReason').value.trim();
+      if (!reason) { $('ovReason').focus(); $('ovReason').classList.add('err'); return; }
+      recordDecision('denied', reason);
+    };
+    $('ovReason').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('ovDenySave').click(); });
+  }
+
+  function recordDecision(decision, reason) {
+    const s = lastRoute.stops[confirmState.i];
+    confirmState.results.push({ stop: s, decision, reason });
+    confirmState.i++;
+    renderConfirmStep();
+  }
+
+  function confirmExitGuard() {
+    const done = confirmState.results.length;
+    if (done > 0 && done < lastRoute.stops.length &&
+        !window.confirm(`Exit the walk? ${done} of ${lastRoute.stops.length} recorded — you can still download a partial report.`)) {
+      return;
+    }
+    if (done > 0) renderConfirmSummary();
+    else closeConfirm();
+  }
+
+  function renderConfirmSummary() {
+    const results = confirmState.results;
+    const confirmed = results.filter(r => r.decision === 'confirmed').length;
+    const denied = results.length - confirmed;
+
+    $('ovCard').innerHTML = `
+      <div class="ov-top">
+        <span class="ov-prog">Walk complete — ${results.length} checked</span>
+        <button class="ov-x" id="ovClose" title="Close">✕</button>
+      </div>
+      <div class="ov-summary">
+        <div class="sum-tile ok"><div class="n">${confirmed}</div><div>Confirmed</div></div>
+        <div class="sum-tile no"><div class="n">${denied}</div><div>Denied</div></div>
+        <div class="sum-tile"><div class="n">${results.length}</div><div>Total</div></div>
+      </div>
+      <div class="ov-actions">
+        <button class="btn" id="ovCloseBtn">Close</button>
+        <button class="btn primary" id="ovDownload">⬇ Download report (.md)</button>
+      </div>
+      <div class="ov-note" id="ovNote"></div>`;
+
+    $('ovClose').onclick = closeConfirm;
+    $('ovCloseBtn').onclick = closeConfirm;
+    $('ovDownload').onclick = () => downloadReport(results);
+  }
+
+  // ---- Report ---------------------------------------------------------------
+
+  function downloadReport(results) {
+    const md = buildReportMarkdown(results);
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const fname = `pick-verification-${warehouseId}-${stamp}.md`;
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    const note = $('ovNote');
+    if (note) note.textContent = `Saved ${fname}`;
+  }
+
+  function buildReportMarkdown(results) {
+    const now = new Date();
+    const confirmed = results.filter(r => r.decision === 'confirmed').length;
+    const denied = results.length - confirmed;
+    const startBin = $('startBin').value.trim() || '(not set)';
+
+    const lines = [];
+    lines.push(`# Pick Error Verification Report — ${warehouseId}`);
+    lines.push('');
+    lines.push(`- **Generated:** ${now.toString()}`);
+    lines.push(`- **Warehouse:** ${warehouseId}`);
+    lines.push(`- **Start location:** ${startBin}`);
+    lines.push(`- **Checked:** ${results.length}  ·  **Confirmed:** ${confirmed}  ·  **Denied:** ${denied}`);
+    lines.push('');
+    lines.push('| # | Result | Bin | Aisle | Error | LPN | AA | ASIN | FNSKU | Item | Qty | Reason |');
+    lines.push('|---|--------|-----|-------|-------|-----|----|------|-------|------|-----|--------|');
+    results.forEach((r, idx) => {
+      const it = r.stop.item || {};
+      const cells = [
+        idx + 1,
+        r.decision === 'confirmed' ? '✅ confirmed' : '❌ denied',
+        r.stop.bin || '',
+        r.stop.aisle || '',
+        (it.source === 'reject' ? 'reject' : 'short'),
+        it.lpn || '',
+        it.aa || '',
+        it.asin || '',
+        it.fnsku || '',
+        mdCell(it.itemName || ''),
+        it.quantity || '',
+        mdCell(r.reason || '')
+      ];
+      lines.push('| ' + cells.map(c => String(c)).join(' | ') + ' |');
+    });
+    lines.push('');
+
+    if (denied) {
+      lines.push('## Denied items');
+      lines.push('');
+      results.filter(r => r.decision === 'denied').forEach(r => {
+        const it = r.stop.item || {};
+        lines.push(`- **${r.stop.bin}** (${it.source === 'reject' ? 'reject' : 'short'}) — LPN ${it.lpn || '—'}, AA ${it.aa || '—'} — reason: ${r.reason}`);
+      });
+      lines.push('');
+    }
+
+    lines.push('---');
+    lines.push('_Generated by Qualy Pick Path._');
+    return lines.join('\n');
+  }
+
+  function mdCell(s) {
+    // Keep table cells single-line and pipe-safe.
+    return String(s || '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim();
   }
 
   // ---- CSV / TSV paste fallback --------------------------------------------
@@ -203,7 +410,8 @@
     time: 'time', timestamp: 'timestamp', warehouse_id: 'warehouseId',
     bin: 'bin', bin_raw: 'binRaw', fnsku: 'fnsku', asin: 'asin', asin_raw: 'asinRaw',
     item_name: 'itemName', quantity: 'quantity', reject_reason: 'rejectReason',
-    binding_name: 'binding'
+    binding_name: 'binding', user_id: 'aa', user_login: 'aa', user_: 'aa',
+    login: 'aa', lpn: 'lpn'
   };
 
   function parseDelimited(text) {
@@ -252,6 +460,7 @@
         bin, fnsku: rec.fnsku || '', asin: rec.asinRaw || rec.asin || '',
         itemName: rec.itemName || '', quantity: rec.quantity || '',
         rejectReason: rec.rejectReason || '', binding: rec.binding || '',
+        aa: rec.aa || '', lpn: rec.lpn || '',
         time: rec.time || rec.timestamp || '',
         source: rec.rejectReason ? 'reject' : 'short'
       });
