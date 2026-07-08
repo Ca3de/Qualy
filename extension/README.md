@@ -71,18 +71,26 @@ field name is pulled best-effort across likely keys (`lpn`, `pick_lpn`,
 and in the confirmation walk / report.
 
 ### 3. Pathfinding (route)
-`lib/binParser.js` decodes bins like `P-1-A241F363` into
-`module=P, floor=1, aisle=A241, slot=363`. `lib/pathfinding.js` then applies a
-**serpentine heuristic**:
+`lib/binParser.js` decodes `P-1-A241F363` using the confirmed IND8 geometry:
 
-1. group bins by aisle, order aisles along a line,
-2. snake the slots (alternate direction each aisle),
-3. rotate so the route **starts at the aisle nearest your start bin** and wraps
-   around for anything behind it.
+| Segment | Meaning |
+|---|---|
+| `A` | **Module** — A Mod / B Mod |
+| `241` | **Aisle number** (cross-axis, map 100–266) |
+| `F` | **Shelf level** — `A`=bottom … `G`=top (**A & G are locked**, need a key) |
+| `363` | **Position along the aisle** — 500 (desk) … 100 (midpoint), mirrored per mod |
 
-No warehouse map is needed. When a real IND8 mod/aisle adjacency map is
-available, only `orderAisles()` in `pathfinding.js` has to change for an exact
-route.
+`lib/pathfinding.js` orders the stops along the real **desk→exit** walk:
+
+1. **B Mod before A Mod** (desk side → exit side), each module kept contiguous.
+2. Within a module, sweep aisles and **serpentine the slots** (base direction
+   500→100 toward the exit, alternating each aisle).
+3. Rotate the sweep **within the start bin's module** so the route begins near
+   the picker without splitting a module.
+
+Bins on locked levels (A/G) are flagged with 🔒 so the picker knows a key is
+needed. A cleaner mod map could later add exact walk-distance along the green
+highways, but the ordering above matches how IND8 is actually walked.
 
 ### 4. Confirmation walk + report
 Once a route is built, **Start confirmation walk** steps through the stops one

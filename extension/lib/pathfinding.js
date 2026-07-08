@@ -43,58 +43,61 @@
       aisleMap.get(p.bin.aisleKey).push(p);
     }
 
-    // Deterministic aisle order along the "line".
+    // Deterministic aisle order along the desk->exit line (B Mod, then A Mod;
+    // aisle number ascending within a mod).
     const aisleKeys = Array.from(aisleMap.keys()).sort((a, b) => {
       return Bin.aisleRank(aisleMap.get(a)[0].bin) -
              Bin.aisleRank(aisleMap.get(b)[0].bin);
     });
 
-    // Serpentine within each aisle.
-    aisleKeys.forEach((key, i) => {
-      const rows = aisleMap.get(key);
-      rows.sort((a, b) => (a.bin.slot || 0) - (b.bin.slot || 0));
-      if (i % 2 === 1) rows.reverse(); // odd aisles walked in reverse
-    });
-
-    // Where does the picker start?
-    const startBin = Bin.parseBin(startBinRaw);
-    let startIndex = 0;
-    if (startBin.aisle != null) {
-      const startRank = Bin.aisleRank(startBin);
-      // First aisle at or after the start rank; else nearest by absolute rank.
-      let best = 0;
-      let bestDelta = Infinity;
-      aisleKeys.forEach((key, i) => {
-        const r = Bin.aisleRank(aisleMap.get(key)[0].bin);
-        const forwardDelta = r >= startRank ? r - startRank : Infinity;
-        if (forwardDelta < bestDelta) { bestDelta = forwardDelta; best = i; }
-      });
-      if (bestDelta === Infinity) {
-        // Start is past every aisle — nearest by absolute distance.
-        let absBest = 0, absDelta = Infinity;
-        aisleKeys.forEach((key, i) => {
-          const d = Math.abs(Bin.aisleRank(aisleMap.get(key)[0].bin) - startRank);
-          if (d < absDelta) { absDelta = d; absBest = i; }
-        });
-        best = absBest;
-      }
-      startIndex = best;
+    // Group aisles by module, preserving the desk->exit module order.
+    const byMod = new Map();
+    const modOrder = [];
+    for (const key of aisleKeys) {
+      const mod = aisleMap.get(key)[0].bin.aisleLetter || '?';
+      if (!byMod.has(mod)) { byMod.set(mod, []); modOrder.push(mod); }
+      byMod.get(mod).push(key);
     }
 
-    // Rotate aisle order to begin at startIndex.
-    const rotated = aisleKeys.slice(startIndex).concat(aisleKeys.slice(0, startIndex));
+    // The picker's start: rotate the aisle sweep *within its own module* so we
+    // begin near them, but keep every module contiguous (no cross-building
+    // backtracking mid-mod).
+    const startBin = Bin.parseBin(startBinRaw);
+    const startMod = startBin.aisleLetter;
+    const startRank = startBin.aisle != null ? Bin.aisleRank(startBin) : null;
+
+    const orderedKeys = [];
+    for (const mod of modOrder) {
+      let keys = byMod.get(mod);
+      if (mod === startMod && startRank != null && keys.length > 1) {
+        let idx = keys.findIndex(k => Bin.aisleRank(aisleMap.get(k)[0].bin) >= startRank);
+        if (idx < 0) idx = 0; // start past all aisles in this mod -> keep order
+        keys = keys.slice(idx).concat(keys.slice(0, idx));
+      }
+      for (const k of keys) orderedKeys.push(k);
+    }
+
+    // Serpentine within each aisle. Base direction toward the exit is slot
+    // descending (500 -> 100); alternate each aisle to avoid re-walking.
+    orderedKeys.forEach((key, i) => {
+      const rows = aisleMap.get(key);
+      rows.sort((a, b) => (a.bin.slot || 0) - (b.bin.slot || 0)); // ascending
+      if (i % 2 === 0) rows.reverse();  // even aisles: descending (toward exit)
+    });
 
     const stops = [];
     let order = 1;
-    for (const key of rotated) {
+    for (const key of orderedKeys) {
       for (const p of aisleMap.get(key)) {
         stops.push({
           order: order++,
           bin: p.bin.raw,
           aisle: (p.bin.aisleLetter || '') + (p.bin.aisle == null ? '' : p.bin.aisle),
-          module: p.bin.module,
+          mod: p.bin.mod,
           floor: p.bin.floor,
           slot: p.bin.slot,
+          level: p.bin.level,
+          locked: p.bin.locked,
           item: p.item
         });
       }
@@ -104,7 +107,7 @@
       stops,
       unrouted,
       startBin,
-      estAisleChanges: Math.max(0, rotated.length - 1)
+      estAisleChanges: Math.max(0, orderedKeys.length - 1)
     };
   }
 

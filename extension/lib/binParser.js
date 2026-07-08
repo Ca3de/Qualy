@@ -36,6 +36,9 @@
       aisle: null,
       bayLetter: null,
       slot: null,
+      mod: null,
+      level: null,
+      locked: false,
       aisleKey: null
     };
 
@@ -59,10 +62,14 @@
     if (core) {
       const m = core.match(CORE_RE);
       if (m) {
-        out.aisleLetter = m[1];
-        out.aisle = parseInt(m[2], 10);
-        out.bayLetter = m[3];
-        out.slot = parseInt(m[4], 10);
+        out.aisleLetter = m[1];          // module letter: A Mod / B Mod
+        out.aisle = parseInt(m[2], 10);  // aisle number (cross-axis)
+        out.bayLetter = m[3];            // shelf level: A=bottom … G=top
+        out.slot = parseInt(m[4], 10);   // position along the aisle (500=desk … 100=midpoint)
+        out.mod = m[1];
+        out.level = m[3];
+        // Top & bottom shelves are locked (need a key): level A (bottom) or G (top).
+        out.locked = (m[3] === 'A' || m[3] === 'G');
         out.valid = true;
       } else {
         // Partial: just an aisle head e.g. "A241" or "A2".
@@ -87,19 +94,24 @@
     return out;
   }
 
-  /**
-   * Comparable numeric rank for an aisle (module+floor+letter+number) so aisles
-   * can be laid out on a single line. Not physically exact — a heuristic until a
-   * real mod map is supplied.
-   */
-  function aisleRank(bin) {
-    const mod = bin.module ? bin.module.charCodeAt(0) : 0;
-    const floor = bin.floor == null ? 0 : bin.floor;
-    const letter = bin.aisleLetter ? bin.aisleLetter.charCodeAt(0) : 0;
-    const aisle = bin.aisle == null ? 0 : bin.aisle;
-    // Wide multipliers keep the components from colliding.
-    return mod * 1e9 + floor * 1e7 + letter * 1e4 + aisle;
+  // Module walk order (desk -> exit): B Mod (desk side) before A Mod (exit side).
+  function modRank(letter) {
+    if (letter === 'B') return 0;
+    if (letter === 'A') return 1;
+    return 2;
   }
 
-  root.QualyBin = { parseBin, aisleRank, CORE_RE };
+  /**
+   * Comparable numeric rank that lays aisles out along the desk->exit walk:
+   * B Mod before A Mod, then by floor, then by aisle number (the cross-sweep).
+   * Slot direction (500->100 toward the exit) is handled by the serpentine in
+   * pathfinding, not here.
+   */
+  function aisleRank(bin) {
+    const floor = bin.floor == null ? 0 : bin.floor;
+    const aisle = bin.aisle == null ? 0 : bin.aisle;
+    return modRank(bin.aisleLetter) * 1e9 + floor * 1e6 + aisle;
+  }
+
+  root.QualyBin = { parseBin, aisleRank, modRank, CORE_RE };
 })(typeof self !== 'undefined' ? self : this);

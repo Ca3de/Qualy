@@ -176,8 +176,9 @@
       <div class="info">
         <div>
           <span class="bin">${escapeHtml(s.bin)}</span>
-          <span class="aisle-tag">aisle ${escapeHtml(s.aisle || '?')}${s.slot != null ? ' · slot ' + s.slot : ''}</span>
+          <span class="aisle-tag">aisle ${escapeHtml(s.aisle || '?')}${s.level ? ' · level ' + escapeHtml(s.level) : ''}${s.slot != null ? ' · slot ' + s.slot : ''}</span>
           ${badge}
+          ${s.locked ? '<span class="badge locked" title="Top/bottom shelf — key needed">🔒 locked</span>' : ''}
         </div>
         ${name ? `<div class="name">${escapeHtml(name)}</div>` : ''}
         <div class="kv">${qty}<b>LPN</b> ${escapeHtml(it.lpn || '—')} · <b>AA</b> ${escapeHtml(it.aa || '—')}</div>
@@ -230,8 +231,9 @@
         <button class="ov-x" id="ovClose" title="Exit">✕</button>
       </div>
       <div class="ov-bin">${escapeHtml(s.bin)}</div>
-      <div class="ov-sub">aisle ${escapeHtml(s.aisle || '?')}${s.slot != null ? ' · slot ' + s.slot : ''}
+      <div class="ov-sub">aisle ${escapeHtml(s.aisle || '?')}${s.level ? ' · level ' + escapeHtml(s.level) : ''}${s.slot != null ? ' · slot ' + s.slot : ''}
         <span class="badge ${isReject ? 'reject' : 'short'}">${isReject ? 'REJECT' : 'SHORT'}</span>
+        ${s.locked ? '<span class="badge locked">🔒 locked shelf</span>' : ''}
       </div>
       <div class="ov-body">
         ${img ? `<img class="ov-img" src="${escapeAttr(img)}" alt="" />`
@@ -350,15 +352,16 @@
     lines.push(`- **Start location:** ${startBin}`);
     lines.push(`- **Checked:** ${results.length}  ·  **Confirmed:** ${confirmed}  ·  **Denied:** ${denied}`);
     lines.push('');
-    lines.push('| # | Result | Bin | Aisle | Error | LPN | AA | ASIN | FNSKU | Item | Qty | Reason |');
-    lines.push('|---|--------|-----|-------|-------|-----|----|------|-------|------|-----|--------|');
+    lines.push('| # | Result | Bin | Aisle | Lvl | Error | LPN | AA | ASIN | FNSKU | Item | Qty | Reason |');
+    lines.push('|---|--------|-----|-------|-----|-------|-----|----|------|-------|------|-----|--------|');
     results.forEach((r, idx) => {
       const it = r.stop.item || {};
       const cells = [
         idx + 1,
         r.decision === 'confirmed' ? '✅ confirmed' : '❌ denied',
-        r.stop.bin || '',
+        (r.stop.locked ? '🔒 ' : '') + (r.stop.bin || ''),
         r.stop.aisle || '',
+        (r.stop.level || '') + (r.stop.locked ? ' (locked)' : ''),
         (it.source === 'reject' ? 'reject' : 'short'),
         it.lpn || '',
         it.aa || '',
