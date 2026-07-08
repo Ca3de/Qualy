@@ -1,0 +1,15 @@
+body { margin: 0; font-family: "Amazon Ember", Arial, sans-serif; width: 280px; color: #16191f; }
+.wrap { padding: 14px; }
+.title { font-size: 15px; font-weight: 700; color: #232f3e; }
+.desc { font-size: 12px; color: #545b64; line-height: 1.4; }
+.steps { font-size: 12px; color: #16191f; padding-left: 18px; margin: 8px 0; line-height: 1.5; }
+.row { display: flex; gap: 8px; margin-bottom: 8px; }
+.btn {
+  flex: 1; text-align: center; text-decoration: none; display: block;
+  padding: 7px 8px; font-size: 12px; font-weight: 600; color: #16191f;
+  background: #ff9900; border: 1px solid #e88b00; border-radius: 4px; cursor: pointer;
+}
+.btn:hover { background: #ffac31; }
+.btn.ghost { width: 100%; background: #fff; border-color: #aab7b8; }
+.btn.ghost:hover { background: #f2f3f3; }
+.status { font-size: 11px; color: #545b64; margin-top: 8px; min-height: 14px; }

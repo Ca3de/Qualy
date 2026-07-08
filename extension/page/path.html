@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Qualy Pick Path</title>
+  <link rel="stylesheet" href="path.css" />
+</head>
+<body>
+  <header class="hd">
+    <div class="hd-title">🧭 Qualy Pick Path</div>
+    <div class="hd-meta" id="meta"></div>
+  </header>
+
+  <section class="controls">
+    <div class="ctrl-row">
+      <label>Start bin / aisle
+        <input id="startBin" type="text" placeholder="e.g. P-1-A200C300" />
+      </label>
+      <label>Warehouse
+        <input id="warehouse" type="text" value="IND8" size="6" />
+      </label>
+      <label class="chk"><input id="enrich" type="checkbox" checked /> FC Research images</label>
+      <button id="build" class="btn primary">Build path</button>
+      <span id="status" class="status"></span>
+    </div>
+
+    <details id="pasteWrap" class="paste">
+      <summary>No rows auto-pulled? Paste the ATLAS CSV/TSV export here</summary>
+      <p class="hint">Paste rows copied from the dashboard (or the TamperMonkey CSV export).
+        The header row must include <code>bin</code>/<code>bin_raw</code> and
+        <code>fnsku</code> or <code>asin</code>.</p>
+      <textarea id="pasteBox" rows="6" placeholder="time,asin,fnsku,bin_raw,quantity,reject_reason,item_name&#10;..."></textarea>
+      <button id="parsePaste" class="btn">Load pasted rows</button>
+    </details>
+  </section>
+
+  <section class="mini" id="mini"></section>
+  <section id="stops" class="stops"></section>
+  <footer class="ft">
+    Serpentine heuristic (v1) — swap in the IND8 mod map later for an exact route.
+  </footer>
+
+  <script src="path.js"></script>
+</body>
+</html>

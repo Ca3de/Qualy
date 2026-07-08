@@ -1,0 +1,60 @@
+{
+  "manifest_version": 2,
+  "name": "Qualy Pick Path",
+  "version": "1.0.0",
+  "description": "Auto-pulls Pick Rejects/Shorts errors from ATLAS, enriches each with the FC Research item image, and curates the best walking path around the mods from a starting bin.",
+  "author": "Ca3de",
+  "homepage_url": "https://github.com/Ca3de/qualy",
+
+  "permissions": [
+    "storage",
+    "tabs",
+    "*://moc.prod.atlas-opensearch.qubit.amazon.dev/*",
+    "*://fcresearch-na.aka.amazon.com/*",
+    "*://fcresearch.aka.amazon.com/*",
+    "*://rodeo-iad.amazon.com/*",
+    "*://m.media-amazon.com/*",
+    "*://images-na.ssl-images-amazon.com/*"
+  ],
+
+  "background": {
+    "scripts": ["lib/binParser.js", "lib/pathfinding.js", "background.js"],
+    "persistent": false
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["*://moc.prod.atlas-opensearch.qubit.amazon.dev/*"],
+      "js": ["content/atlas.js"],
+      "css": ["content/atlas.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "browser_action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "Qualy Pick Path"
+  },
+
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+
+  "web_accessible_resources": ["page/path.html", "page/path.css", "page/path.js"],
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "qualy-pick-path@ca3de",
+      "strict_min_version": "115.0"
+    }
+  }
+}

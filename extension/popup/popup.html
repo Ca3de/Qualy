@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">🧭 Qualy Pick Path</div>
+    <p class="desc">Pulls Pick Rejects / Unverified Shorts from ATLAS, adds the FC Research item image, and routes the bins from your start location.</p>
+    <ol class="steps">
+      <li>Open an ATLAS <b>Rejects</b> or <b>Shorts</b> dashboard.</li>
+      <li>Use the floating panel to set a start bin.</li>
+      <li>Click <b>Pull errors &amp; build path</b>.</li>
+    </ol>
+    <div class="row">
+      <a class="btn" id="openRejects" href="#" target="_blank">Open Rejects</a>
+      <a class="btn" id="openShorts" href="#" target="_blank">Open Shorts</a>
+    </div>
+    <button class="btn ghost" id="clearCache">Clear FC Research cache</button>
+    <div class="status" id="status"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+:root {
+  --bg: #f2f3f3;
+  --card: #ffffff;
+  --ink: #16191f;
+  --muted: #545b64;
+  --line: #d5dbdb;
+  --accent: #ff9900;
+  --navy: #232f3e;
+  --reject: #d13212;
+  --short: #b7791f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Amazon Ember", Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+.hd {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px 20px;
+  background: var(--navy);
+  color: #fff;
+}
+.hd-title { font-size: 18px; font-weight: 700; }
+.hd-meta { font-size: 13px; color: #cdd3d8; }
+
+.controls {
+  padding: 14px 20px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.ctrl-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ctrl-row label { font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+.ctrl-row label.chk { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); font-size: 13px; }
+.ctrl-row input[type="text"] {
+  padding: 7px 8px; border: 1px solid #aab7b8; border-radius: 4px; font-size: 14px; min-width: 180px;
+}
+.ctrl-row input[size] { min-width: 0; }
+
+.btn {
+  padding: 8px 14px; border: 1px solid #aab7b8; border-radius: 4px; background: #fff;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn.primary { background: var(--accent); border-color: #e88b00; }
+.btn.primary:hover { background: #ffac31; }
+.status { font-size: 12px; color: var(--muted); }
+
+.paste { margin-top: 12px; font-size: 13px; }
+.paste summary { cursor: pointer; color: var(--muted); }
+.paste .hint { color: var(--muted); font-size: 12px; }
+.paste code { background: #eef1f1; padding: 1px 4px; border-radius: 3px; }
+.paste textarea { width: 100%; font-family: monospace; font-size: 12px; padding: 8px; border: 1px solid #aab7b8; border-radius: 4px; }
+
+.mini {
+  padding: 0 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.mini:empty { display: none; }
+.mini .aisle-chip {
+  font-size: 11px; font-weight: 600; color: var(--navy);
+  background: #eef1f1; border: 1px solid var(--line); border-radius: 12px;
+  padding: 3px 9px;
+}
+.mini .arrow { color: var(--muted); }
+
+.stops {
+  padding: 16px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 1000px;
+}
+
+.stop {
+  display: grid;
+  grid-template-columns: 44px 96px 1fr;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  align-items: start;
+}
+.stop .order {
+  font-size: 18px; font-weight: 700; color: #fff;
+  background: var(--navy); border-radius: 50%;
+  width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+}
+.stop .thumb {
+  width: 96px; height: 96px; object-fit: contain;
+  background: #fff; border: 1px solid var(--line); border-radius: 6px;
+}
+.stop .thumb.ph {
+  display: flex; align-items: center; justify-content: center;
+  color: #aab7b8; font-size: 11px; text-align: center;
+}
+.stop .info { min-width: 0; }
+.stop .bin {
+  font-size: 20px; font-weight: 700; letter-spacing: 0.02em; color: var(--navy);
+}
+.stop .aisle-tag { font-size: 12px; color: var(--muted); margin-left: 8px; }
+.stop .badge {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 2px 7px; border-radius: 10px; color: #fff; margin-left: 8px; vertical-align: middle;
+}
+.stop .badge.reject { background: var(--reject); }
+.stop .badge.short { background: var(--short); }
+.stop .name { font-size: 13px; margin: 5px 0; color: var(--ink); line-height: 1.35; }
+.stop .kv { font-size: 12px; color: var(--muted); }
+.stop .kv b { color: var(--ink); font-weight: 600; }
+.stop .links { margin-top: 7px; display: flex; gap: 12px; flex-wrap: wrap; }
+.stop .links a { font-size: 12px; color: #0073bb; text-decoration: none; }
+.stop .links a:hover { text-decoration: underline; }
+
+.empty { padding: 40px 20px; color: var(--muted); }
+
+.ft { padding: 14px 20px 30px; color: var(--muted); font-size: 12px; }
+
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16191f; --card:#232f3e; --ink:#e9ebed; --muted:#aab7b8; --line:#3a4553; }
+  .paste code, .mini .aisle-chip { background:#2d3a48; }
+  .btn { background:#2d3a48; color:#e9ebed; }
+}
