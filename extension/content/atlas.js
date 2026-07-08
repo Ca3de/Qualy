@@ -262,11 +262,64 @@
     });
   }
 
-  function init() {
-    if (document.body) buildPanel();
-    else document.addEventListener('DOMContentLoaded', buildPanel);
+  // Re-inject if missing. OpenSearch Dashboards is a heavy SPA that can wipe
+  // body children after it mounts and on hash navigation, so a one-shot append
+  // is not enough — we watch and re-add.
+  let mountTimer = null;
+  let observer = null;
+
+  function observeBody() {
+    try {
+      if (observer) observer.disconnect();
+      observer = new MutationObserver(() => {
+        if (!document.getElementById('qualy-panel')) {
+          clearTimeout(mountTimer);
+          mountTimer = setTimeout(ensurePanel, 150);
+        }
+      });
+      if (document.body) observer.observe(document.body, { childList: true });
+    } catch (err) {
+      console.error('[Qualy-Atlas] observer error:', err);
+    }
   }
 
-  init();
+  function ensurePanel() {
+    try {
+      if (document.body && !document.getElementById('qualy-panel')) {
+        buildPanel();
+        observeBody(); // (re)bind to the current body (survives body swaps)
+      }
+    } catch (err) {
+      console.error('[Qualy-Atlas] ensurePanel error:', err);
+    }
+  }
+
+  function startWatcher() {
+    ensurePanel();
+    observeBody();
+    // Cheap indefinite guarantee: re-add within ~2s no matter how the SPA
+    // rebuilds the DOM. getElementById is negligible.
+    setInterval(ensurePanel, 2000);
+    window.addEventListener('hashchange', ensurePanel);
+    window.addEventListener('popstate', ensurePanel);
+  }
+
+  // Let the popup open the panel when the user is already on ATLAS.
+  browser.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.type === 'qualyOpenPanel') {
+      ensurePanel();
+      const panel = document.getElementById('qualy-panel');
+      if (panel) {
+        panel.classList.remove('qualy-collapsed');
+        browser.storage.local.set({ qualyPanelOpen: true }).catch(() => {});
+      }
+      return Promise.resolve({ ok: true });
+    }
+    return false;
+  });
+
+  if (document.body) startWatcher();
+  else document.addEventListener('DOMContentLoaded', startWatcher);
+
   log('content script ready on', location.href);
 })();

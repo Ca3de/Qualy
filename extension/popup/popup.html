@@ -7,16 +7,26 @@
 <body>
   <div class="wrap">
     <div class="title">🧭 Qualy Pick Path</div>
-    <p class="desc">Pulls Pick Rejects / Unverified Shorts from ATLAS, adds the FC Research item image, and routes the bins from your start location.</p>
-    <ol class="steps">
-      <li>Open an ATLAS <b>Rejects</b> or <b>Shorts</b> dashboard.</li>
-      <li>Use the floating panel to set a start bin.</li>
-      <li>Click <b>Pull errors &amp; build path</b>.</li>
-    </ol>
-    <div class="row">
-      <a class="btn" id="openRejects" href="#" target="_blank">Open Rejects</a>
-      <a class="btn" id="openShorts" href="#" target="_blank">Open Shorts</a>
+
+    <div id="onAtlas" hidden>
+      <p class="desc">You're on an ATLAS dashboard. Open the panel to pull errors and build a path.</p>
+      <button class="btn" id="openPanel">Open Qualy panel</button>
+      <p class="hint">Tip: the small round logo button sits top-right on the dashboard — click it any time.</p>
     </div>
+
+    <div id="offAtlas" hidden>
+      <p class="desc">Pulls Pick Rejects / Unverified Shorts from ATLAS, adds the FC Research item image, and routes the bins from your start location.</p>
+      <ol class="steps">
+        <li>Open an ATLAS <b>Rejects</b> or <b>Shorts</b> dashboard.</li>
+        <li>Click the round <b>logo button</b> (top-right) to open the panel.</li>
+        <li>Set a start bin, then <b>Pull from ATLAS &amp; build path</b>.</li>
+      </ol>
+      <div class="row">
+        <a class="btn" id="openRejects" href="#" target="_blank">Open Rejects</a>
+        <a class="btn" id="openShorts" href="#" target="_blank">Open Shorts</a>
+      </div>
+    </div>
+
     <button class="btn ghost" id="clearCache">Clear FC Research cache</button>
     <div class="status" id="status"></div>
   </div>

@@ -12,4 +12,6 @@ body { margin: 0; font-family: "Amazon Ember", Arial, sans-serif; width: 280px; 
 .btn:hover { background: #ffac31; }
 .btn.ghost { width: 100%; background: #fff; border-color: #aab7b8; }
 .btn.ghost:hover { background: #f2f3f3; }
+.hint { font-size: 11px; color: #767b82; margin: 8px 0 0; line-height: 1.4; }
+#onAtlas .btn { width: 100%; margin-bottom: 4px; }
 .status { font-size: 11px; color: #545b64; margin-top: 8px; min-height: 14px; }
