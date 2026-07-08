@@ -71,12 +71,10 @@ fragment for:
 > FC Research's `s=` accepts FNSKU/ASIN/LPN — the image lookup keys off the
 > FNSKU (falling back to ASIN).
 
-### 2b. AA + LPN (who + which unit)
+### 2b. AA + LPN + manager (who + which unit)
 From the same ATLAS `_source` the extension also reads the **AA** (associate
-login, field `user_id`) and the **LPN**. The AA field is confirmed; the LPN
-field name is pulled best-effort across likely keys (`lpn`, `pick_lpn`,
-`from_lpn`, `license_plate`, `container_id`, …). Both appear on the stop cards
-and in the confirmation walk / report.
+login, `user_id`), the **manager** (`manager`), and the **LPN** (`lpn`). All
+three appear on the stop cards and in the confirmation walk / report.
 
 ### 3. Pathfinding (route)
 `lib/binParser.js` decodes `P-1-A241F363` using the confirmed IND8 geometry:
@@ -96,9 +94,16 @@ routes for **efficiency, not a forced direction**:
 2. **Serpentine the slots** within each aisle (alternating direction) so an
    aisle is never walked end-to-end twice.
 
-Bins on locked levels (A/G) are flagged with 🔒 so the picker knows a key is
-needed. A cleaner mod map could later add exact walk-distance along the green
-highways, but the ordering above matches how IND8 is actually walked.
+Bins on locked levels are flagged with 🔒 so the picker knows a key is needed.
+The bottom shelf is always `A`; the top letter varies by aisle (`G` on some,
+`L` on others), so `A`, `G`, and `L` are treated as locked. A cleaner mod map
+could later add exact walk-distance along the green highways, but the ordering
+above matches how IND8 is actually walked.
+
+### UI: stays out of the way
+On the ATLAS dashboards the extension shows only a small round **logo button**
+in the corner (collapsed by default). Click it to open the control panel; the
+"–" button collapses it again. The open/closed state is remembered.
 
 ### 4. Confirmation walk + report
 Once a route is built, **Start confirmation walk** steps through the stops one

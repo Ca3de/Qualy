@@ -280,7 +280,7 @@
           ${s.locked ? '<span class="badge locked" title="Top/bottom shelf — key needed">🔒 locked</span>' : ''}
         </div>
         ${name ? `<div class="name">${escapeHtml(name)}</div>` : ''}
-        <div class="kv">${qty}<b>LPN</b> ${escapeHtml(it.lpn || '—')} · <b>AA</b> ${escapeHtml(it.aa || '—')}</div>
+        <div class="kv">${qty}<b>LPN</b> ${escapeHtml(it.lpn || '—')} · <b>AA</b> ${escapeHtml(it.aa || '—')}${it.manager ? ' · <b>Mgr</b> ' + escapeHtml(it.manager) : ''}</div>
         <div class="kv"><b>ASIN</b> ${escapeHtml(it.asin || fc.asin || '—')} · <b>FNSKU</b> ${escapeHtml(it.fnsku || '—')}</div>
         ${details.length ? `<div class="kv">${details.join(' · ')}</div>` : ''}
         ${reason}
@@ -340,7 +340,7 @@
         <div class="ov-info">
           ${name ? `<div class="ov-name">${escapeHtml(name)}</div>` : ''}
           <div class="ov-kv"><span>LPN</span><b>${escapeHtml(it.lpn || '—')}</b></div>
-          <div class="ov-kv"><span>AA (login)</span><b>${escapeHtml(it.aa || '—')}</b></div>
+          <div class="ov-kv"><span>AA (login)</span><b>${escapeHtml(it.aa || '—')}${it.manager ? ' · mgr ' + escapeHtml(it.manager) : ''}</b></div>
           <div class="ov-kv"><span>Qty</span><b>${escapeHtml(String(it.quantity || '—'))}</b></div>
           <div class="ov-kv"><span>ASIN / FNSKU</span><b>${escapeHtml(it.asin || fc.asin || '—')} / ${escapeHtml(it.fnsku || '—')}</b></div>
           ${it.rejectReason ? `<div class="ov-kv"><span>Reject reason</span><b>${escapeHtml(it.rejectReason)}</b></div>` : ''}
@@ -451,8 +451,8 @@
     lines.push(`- **Start location:** ${startBin}`);
     lines.push(`- **Checked:** ${results.length}  ·  **Confirmed:** ${confirmed}  ·  **Denied:** ${denied}`);
     lines.push('');
-    lines.push('| # | Result | Bin | Aisle | Lvl | Error | LPN | AA | ASIN | FNSKU | Item | Qty | Reason |');
-    lines.push('|---|--------|-----|-------|-----|-------|-----|----|------|-------|------|-----|--------|');
+    lines.push('| # | Result | Bin | Aisle | Lvl | Error | LPN | AA | Mgr | ASIN | FNSKU | Item | Qty | Reason |');
+    lines.push('|---|--------|-----|-------|-----|-------|-----|----|-----|------|-------|------|-----|--------|');
     results.forEach((r, idx) => {
       const it = r.stop.item || {};
       const cells = [
@@ -464,6 +464,7 @@
         (it.source === 'reject' ? 'reject' : 'short'),
         it.lpn || '',
         it.aa || '',
+        it.manager || '',
         it.asin || '',
         it.fnsku || '',
         mdCell(it.itemName || ''),
@@ -513,7 +514,7 @@
     bin: 'bin', bin_raw: 'binRaw', fnsku: 'fnsku', asin: 'asin', asin_raw: 'asinRaw',
     item_name: 'itemName', quantity: 'quantity', reject_reason: 'rejectReason',
     binding_name: 'binding', user_id: 'aa', user_login: 'aa', user_: 'aa',
-    login: 'aa', lpn: 'lpn'
+    login: 'aa', manager: 'manager', lpn: 'lpn'
   };
 
   function parseDelimited(text) {
@@ -562,7 +563,7 @@
         bin, fnsku: rec.fnsku || '', asin: rec.asinRaw || rec.asin || '',
         itemName: rec.itemName || '', quantity: rec.quantity || '',
         rejectReason: rec.rejectReason || '', binding: rec.binding || '',
-        aa: rec.aa || '', lpn: rec.lpn || '',
+        aa: rec.aa || '', manager: rec.manager || '', lpn: rec.lpn || '',
         time: rec.time || rec.timestamp || '',
         source: rec.rejectReason ? 'reject' : 'short'
       });

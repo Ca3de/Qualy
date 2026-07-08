@@ -33,6 +33,7 @@
     user_login: 'aa',
     user_: 'aa',
     login: 'aa',
+    manager: 'manager',
     lpn: 'lpn'
   };
 
@@ -112,6 +113,7 @@
           rejectReason: rec.rejectReason || '',
           binding: rec.binding || '',
           aa: rec.aa || '',
+          manager: rec.manager || '',
           lpn: rec.lpn || '',
           time: rec.time || rec.timestamp || '',
           source: rec.rejectReason ? 'reject' : 'short'
@@ -145,11 +147,19 @@
   function buildPanel() {
     if (document.getElementById('qualy-panel')) return;
 
+    const LOGO = `<svg viewBox="0 0 128 128" width="26" height="26" aria-hidden="true">
+      <path d="M64 14 a26 26 0 0 1 26 26 c0 20 -26 46 -26 46 c0 0 -26 -26 -26 -46 a26 26 0 0 1 26 -26 Z" fill="#ff9900"/>
+      <path d="M52 40 l9 9 l17 -18" fill="none" stroke="#1b2531" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+
     const panel = document.createElement('div');
     panel.id = 'qualy-panel';
+    panel.className = 'qualy-collapsed';
     panel.innerHTML = `
+      <button id="qualy-fab" class="qualy-fab" title="Qualy Pick Path — open">${LOGO}</button>
+      <div class="qualy-card">
       <div class="qualy-hd">
-        <span>🧭 Qualy Pick Path</span>
+        <span class="qualy-hd-title">${LOGO}<span>Qualy Pick Path</span></span>
         <button id="qualy-min" title="Minimise">–</button>
       </div>
       <div class="qualy-bd">
@@ -179,12 +189,21 @@
         <button id="qualy-go" class="qualy-btn">Pull from ATLAS &amp; build path</button>
         <a id="qualy-scrape" class="qualy-alt" href="#">or scrape this page instead</a>
         <div id="qualy-status" class="qualy-status">Ready.</div>
+      </div>
       </div>`;
     document.body.appendChild(panel);
 
     const status = panel.querySelector('#qualy-status');
-    panel.querySelector('#qualy-min').addEventListener('click', () => {
-      panel.classList.toggle('qualy-collapsed');
+
+    // Collapsed by default; stays out of the way until opened. Remember state.
+    function setOpen(open) {
+      panel.classList.toggle('qualy-collapsed', !open);
+      browser.storage.local.set({ qualyPanelOpen: open }).catch(() => {});
+    }
+    panel.querySelector('#qualy-fab').addEventListener('click', () => setOpen(true));
+    panel.querySelector('#qualy-min').addEventListener('click', () => setOpen(false));
+    browser.storage.local.get('qualyPanelOpen').then(r => {
+      if (r && r.qualyPanelOpen) panel.classList.remove('qualy-collapsed');
     });
 
     async function openPath(payload) {

@@ -19,6 +19,9 @@
   // Matches the trailing "A241F363" chunk: letter, digits, letter, digits.
   const CORE_RE = /^([A-Z])(\d+)([A-Z])(\d+)$/;
 
+  // Locked shelf levels: A (bottom, always) plus the known top letters G and L.
+  const LOCKED_LEVELS = new Set(['A', 'G', 'L']);
+
   /**
    * Parse a bin code string into a structured record.
    * @param {string} raw
@@ -68,8 +71,10 @@
         out.slot = parseInt(m[4], 10);   // position along the aisle (500=desk … 100=midpoint)
         out.mod = m[1];
         out.level = m[3];
-        // Top & bottom shelves are locked (need a key): level A (bottom) or G (top).
-        out.locked = (m[3] === 'A' || m[3] === 'G');
+        // Top & bottom shelves are locked (need a key). Bottom is always A; the
+        // top letter varies by aisle (G on some, L on others), so flag A + the
+        // two known top letters. Can't know the exact per-aisle top from one bin.
+        out.locked = LOCKED_LEVELS.has(m[3]);
         out.valid = true;
       } else {
         // Partial: just an aisle head e.g. "A241" or "A2".
