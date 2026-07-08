@@ -49,6 +49,8 @@ body {
 .ctrl-row input[size] { min-width: 0; }
 .ctrl-row.sub { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
 .ctrl-row.sub .sub-lbl { font-size: 12px; font-weight: 600; color: var(--muted); }
+.ctrl-row.range-info { margin-top: 4px; padding-top: 0; border: none; }
+.ctrl-row input[type="datetime-local"] { padding: 6px 8px; border: 1px solid #aab7b8; border-radius: 4px; font-size: 13px; }
 .ctrl-row select { padding: 7px 8px; border: 1px solid #aab7b8; border-radius: 4px; font-size: 14px; }
 .ctrl-row input[type="number"] { padding: 7px 8px; border: 1px solid #aab7b8; border-radius: 4px; font-size: 14px; width: 70px; }
 

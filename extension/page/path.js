@@ -15,8 +15,104 @@
     meta: $('meta'), start: $('startBin'), wh: $('warehouse'), enrich: $('enrich'),
     build: $('build'), status: $('status'), stops: $('stops'), mini: $('mini'),
     pasteBox: $('pasteBox'), parsePaste: $('parsePaste'),
-    types: $('types'), hours: $('hours'), fetchAtlas: $('fetchAtlas')
+    types: $('types'), hours: $('hours'), fetchAtlas: $('fetchAtlas'),
+    timeMode: $('timeMode'), hoursWrap: $('hoursWrap'), fromWrap: $('fromWrap'),
+    toWrap: $('toWrap'), fromDt: $('fromDt'), toDt: $('toDt'), rangeInfo: $('rangeInfo')
   };
+
+  // ---- Time range handling --------------------------------------------------
+
+  els.timeMode.addEventListener('change', onTimeModeChange);
+  ['input', 'change'].forEach(ev => {
+    els.hours.addEventListener(ev, previewRange);
+    els.fromDt.addEventListener(ev, previewRange);
+    els.toDt.addEventListener(ev, previewRange);
+  });
+
+  function onTimeModeChange() {
+    const mode = els.timeMode.value;
+    els.hoursWrap.hidden = mode !== 'hours';
+    els.fromWrap.hidden = mode !== 'custom';
+    els.toWrap.hidden = mode !== 'custom';
+    if (mode === 'custom' && !els.fromDt.value) {
+      // Seed custom inputs with the last 12h so they're not empty.
+      const now = new Date();
+      const twelve = new Date(now.getTime() - 12 * 3600 * 1000);
+      els.fromDt.value = toLocalInput(twelve);
+      els.toDt.value = toLocalInput(now);
+    }
+    previewRange();
+  }
+
+  // Returns { fromISO, toISO, label } for the current time-range selection,
+  // or { hoursBack } for the rolling-hours mode.
+  function resolveTimeRange() {
+    const mode = els.timeMode.value;
+    if (mode === 'hours') {
+      const h = parseInt(els.hours.value, 10) || 12;
+      return { hoursBack: h, label: `last ${h}h` };
+    }
+    if (mode === 'custom') {
+      const from = els.fromDt.value ? new Date(els.fromDt.value) : null;
+      const to = els.toDt.value ? new Date(els.toDt.value) : new Date();
+      if (!from) return { error: 'Set a "From" date/time.' };
+      return { fromISO: from.toISOString(), toISO: to.toISOString(),
+               label: `${fmt(from)} → ${fmt(to)}` };
+    }
+    // Shift windows, computed against the wall clock (associate's local = FC time).
+    const { from, to } = computeShiftRange(mode);
+    return { fromISO: from.toISOString(), toISO: to.toISOString(),
+             label: `${mode} shift · ${fmt(from)} → ${fmt(to)}` };
+  }
+
+  // Day shift: 06:00–18:00 today. Night shift (overnight): 18:00→06:00 spanning
+  // midnight — the window that contains (or most recently contained) "now".
+  function computeShiftRange(mode) {
+    const now = new Date();
+    const h = now.getHours();
+    const atToday = (hour) => {
+      const d = new Date(now); d.setHours(hour, 0, 0, 0); return d;
+    };
+    const shift = (d, days) => new Date(d.getTime() + days * 86400000);
+
+    if (mode === 'day') {
+      return { from: atToday(6), to: atToday(18) };
+    }
+    // night
+    if (h >= 18) {
+      // Evening: tonight 18:00 -> tomorrow 06:00.
+      return { from: atToday(18), to: shift(atToday(6), 1) };
+    }
+    if (h < 6) {
+      // After midnight: yesterday 18:00 -> today 06:00.
+      return { from: shift(atToday(18), -1), to: atToday(6) };
+    }
+    // Daytime but night selected: use the most recent completed night
+    // (yesterday 18:00 -> today 06:00).
+    return { from: shift(atToday(18), -1), to: atToday(6) };
+  }
+
+  function previewRange() {
+    const r = resolveTimeRange();
+    if (r.error) { els.rangeInfo.textContent = r.error; return; }
+    if (r.hoursBack) {
+      const to = new Date();
+      const from = new Date(to.getTime() - r.hoursBack * 3600000);
+      els.rangeInfo.textContent = `Window: ${fmt(from)} → ${fmt(to)} (${r.label})`;
+    } else {
+      els.rangeInfo.textContent = `Window: ${r.label}`;
+    }
+  }
+
+  function toLocalInput(d) {
+    // Format a Date as a datetime-local value (local time, no seconds).
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function fmt(d) {
+    const p = (n) => String(n).padStart(2, '0');
+    return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
 
   // ---- Load payload ---------------------------------------------------------
 
@@ -29,6 +125,8 @@
     if (typeof p.enrich === 'boolean') els.enrich.checked = p.enrich;
     if (p.types) els.types.value = p.types;
     if (p.hoursBack) els.hours.value = p.hoursBack;
+    if (p.timeMode) els.timeMode.value = p.timeMode;
+    onTimeModeChange();
 
     if (p.mode === 'api') {
       fetchFromAtlas(); // pull errors directly, then auto-build
@@ -49,14 +147,15 @@
   async function fetchFromAtlas() {
     warehouseId = els.wh.value.trim() || 'IND8';
     const types = els.types.value;
-    const hoursBack = parseInt(els.hours.value, 10) || 12;
-    els.status.textContent = 'Querying ATLAS…';
+    const range = resolveTimeRange();
+    if (range.error) { els.status.textContent = range.error; return; }
+    els.status.textContent = `Querying ATLAS (${range.label})…`;
     els.fetchAtlas.disabled = true;
     try {
-      const resp = await browser.runtime.sendMessage({
-        type: 'atlasSearch',
-        opts: { warehouseId, types, hoursBack }
-      });
+      const opts = { warehouseId, types };
+      if (range.hoursBack) opts.hoursBack = range.hoursBack;
+      else { opts.fromISO = range.fromISO; opts.toISO = range.toISO; }
+      const resp = await browser.runtime.sendMessage({ type: 'atlasSearch', opts });
       if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
       currentErrors = resp.errors || [];
       updateMeta();

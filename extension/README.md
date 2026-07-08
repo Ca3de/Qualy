@@ -30,13 +30,21 @@ Three ways to pull, in order of robustness:
    `atlas*` index:
    ```
    query_string: warehouse_id:{WH} AND type:(SHORT OR REJECT)
-   filter:       timestamp within the lookback window
+   filter:       timestamp within the chosen window
    size: 5000, sort: timestamp desc
    ```
    It reads `hits.hits[]._source` for `bin`/`bin_raw`, `fnsku`, `asin`,
    `item_name`, `quantity`, `reject_reason`, `type`. No dashboard rendering or
    pagination needed, and it gets **both** error feeds at once. You choose the
-   error type (Shorts / Rejects / both) and lookback hours in the UI.
+   error type (Shorts / Rejects / both) and the **time range**:
+   - **Last X hours** — rolling window.
+   - **Night shift** — 18:00→06:00 overnight: the window containing (or most
+     recently containing) now.
+   - **Day shift** — 06:00→18:00 today.
+   - **Custom** — pick exact from/to date-times.
+
+   Shift windows are computed from the associate's wall clock (= FC local time)
+   and sent to ATLAS as absolute UTC instants.
 2. **Scrape (fallback).** A content script on
    `moc.prod.atlas-opensearch.qubit.amazon.dev/_dashboards/*` scrapes the
    rendered saved-search table, mapping **columns by header name** and preferring
@@ -80,13 +88,13 @@ and in the confirmation walk / report.
 | `F` | **Shelf level** — `A`=bottom … `G`=top (**A & G are locked**, need a key) |
 | `363` | **Position along the aisle** — 500 (desk) … 100 (midpoint), mirrored per mod |
 
-`lib/pathfinding.js` orders the stops along the real **desk→exit** walk:
+`lib/pathfinding.js` lays the aisles on the desk↔exit line (B Mod … A Mod) and
+routes for **efficiency, not a forced direction**:
 
-1. **B Mod before A Mod** (desk side → exit side), each module kept contiguous.
-2. Within a module, sweep aisles and **serpentine the slots** (base direction
-   500→100 toward the exit, alternating each aisle).
-3. Rotate the sweep **within the start bin's module** so the route begins near
-   the picker without splitting a module.
+1. From the start bin, head to the **nearer end first**, then sweep straight to
+   the far end — the optimal cover for stops on a line from an interior start.
+2. **Serpentine the slots** within each aisle (alternating direction) so an
+   aisle is never walked end-to-end twice.
 
 Bins on locked levels (A/G) are flagged with 🔒 so the picker knows a key is
 needed. A cleaner mod map could later add exact walk-distance along the green

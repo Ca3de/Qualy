@@ -163,10 +163,18 @@
               <option value="reject">Rejects</option>
             </select>
           </label>
-          <label class="qualy-lbl2">Lookback hrs
-            <input id="qualy-hours" type="number" min="1" max="168" value="12" />
+          <label class="qualy-lbl2">Time
+            <select id="qualy-timemode">
+              <option value="hours">Last X hrs</option>
+              <option value="night">Night shift</option>
+              <option value="day">Day shift</option>
+              <option value="custom">Custom…</option>
+            </select>
           </label>
         </div>
+        <label class="qualy-lbl2" id="qualy-hourswrap">Lookback hrs
+          <input id="qualy-hours" type="number" min="1" max="336" value="12" />
+        </label>
         <label class="qualy-chk"><input id="qualy-enrich" type="checkbox" checked /> Pull FC Research images</label>
         <button id="qualy-go" class="qualy-btn">Pull from ATLAS &amp; build path</button>
         <a id="qualy-scrape" class="qualy-alt" href="#">or scrape this page instead</a>
@@ -188,6 +196,13 @@
       }
     }
 
+    // Show the hours input only in "last X hours" mode.
+    const timeSel = panel.querySelector('#qualy-timemode');
+    const hoursWrap = panel.querySelector('#qualy-hourswrap');
+    timeSel.addEventListener('change', () => {
+      hoursWrap.style.display = timeSel.value === 'hours' ? '' : 'none';
+    });
+
     // Primary: direct ATLAS API pull (done on the path page).
     panel.querySelector('#qualy-go').addEventListener('click', () => {
       status.textContent = 'Opening path (ATLAS pull)…';
@@ -196,6 +211,7 @@
         startBin: panel.querySelector('#qualy-start').value.trim(),
         warehouseId: detectWarehouseId(),
         types: panel.querySelector('#qualy-types').value,
+        timeMode: timeSel.value,
         hoursBack: parseInt(panel.querySelector('#qualy-hours').value, 10) || 12,
         enrich: panel.querySelector('#qualy-enrich').checked
       });

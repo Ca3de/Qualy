@@ -43,46 +43,48 @@
       aisleMap.get(p.bin.aisleKey).push(p);
     }
 
-    // Deterministic aisle order along the desk->exit line (B Mod, then A Mod;
-    // aisle number ascending within a mod).
-    const aisleKeys = Array.from(aisleMap.keys()).sort((a, b) => {
+    // Lay every aisle out on the desk->exit line (B Mod, then A Mod; aisle
+    // number ascending within a mod). This is a 1-D travel line.
+    const line = Array.from(aisleMap.keys()).sort((a, b) => {
       return Bin.aisleRank(aisleMap.get(a)[0].bin) -
              Bin.aisleRank(aisleMap.get(b)[0].bin);
     });
 
-    // Group aisles by module, preserving the desk->exit module order.
-    const byMod = new Map();
-    const modOrder = [];
-    for (const key of aisleKeys) {
-      const mod = aisleMap.get(key)[0].bin.aisleLetter || '?';
-      if (!byMod.has(mod)) { byMod.set(mod, []); modOrder.push(mod); }
-      byMod.get(mod).push(key);
-    }
-
-    // The picker's start: rotate the aisle sweep *within its own module* so we
-    // begin near them, but keep every module contiguous (no cross-building
-    // backtracking mid-mod).
+    // Efficient direction from the start: treat the aisles as points on a line
+    // and go to the NEARER end first, then sweep straight to the far end — the
+    // optimal cover for points on a line from an interior start. No forced
+    // desk->exit; whichever end is closer wins.
     const startBin = Bin.parseBin(startBinRaw);
-    const startMod = startBin.aisleLetter;
     const startRank = startBin.aisle != null ? Bin.aisleRank(startBin) : null;
 
-    const orderedKeys = [];
-    for (const mod of modOrder) {
-      let keys = byMod.get(mod);
-      if (mod === startMod && startRank != null && keys.length > 1) {
-        let idx = keys.findIndex(k => Bin.aisleRank(aisleMap.get(k)[0].bin) >= startRank);
-        if (idx < 0) idx = 0; // start past all aisles in this mod -> keep order
-        keys = keys.slice(idx).concat(keys.slice(0, idx));
+    let orderedKeys;
+    if (startRank == null || line.length <= 1) {
+      orderedKeys = line.slice();
+    } else {
+      const rankOf = (k) => Bin.aisleRank(aisleMap.get(k)[0].bin);
+      // Split point: first aisle at/after the start position.
+      let k = line.findIndex(key => rankOf(key) >= startRank);
+      if (k < 0) k = line.length;                 // start past the exit end
+      const below = line.slice(0, k);             // toward the desk/low end
+      const above = line.slice(k);                // toward the exit/high end
+      const distLow = startRank - rankOf(line[0]);
+      const distHigh = rankOf(line[line.length - 1]) - startRank;
+
+      if (distLow <= distHigh) {
+        // Low end nearer: sweep down to the low end, then up to the high end.
+        orderedKeys = below.slice().reverse().concat(above);
+      } else {
+        // High end nearer: sweep up to the high end, then down to the low end.
+        orderedKeys = above.concat(below.slice().reverse());
       }
-      for (const k of keys) orderedKeys.push(k);
     }
 
-    // Serpentine within each aisle. Base direction toward the exit is slot
-    // descending (500 -> 100); alternate each aisle to avoid re-walking.
+    // Serpentine within each aisle: alternate slot direction each aisle so we
+    // don't re-walk an aisle end to end.
     orderedKeys.forEach((key, i) => {
       const rows = aisleMap.get(key);
       rows.sort((a, b) => (a.bin.slot || 0) - (b.bin.slot || 0)); // ascending
-      if (i % 2 === 0) rows.reverse();  // even aisles: descending (toward exit)
+      if (i % 2 === 0) rows.reverse();
     });
 
     const stops = [];

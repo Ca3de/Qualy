@@ -34,11 +34,26 @@
           <option value="reject">Rejects only</option>
         </select>
       </label>
-      <label>Lookback (hrs)
-        <input id="hours" type="number" min="1" max="168" value="12" size="4" />
+      <label>Time range
+        <select id="timeMode">
+          <option value="hours">Last X hours</option>
+          <option value="night">Night shift (18:00–06:00)</option>
+          <option value="day">Day shift (06:00–18:00)</option>
+          <option value="custom">Custom range</option>
+        </select>
+      </label>
+      <label id="hoursWrap">Hours
+        <input id="hours" type="number" min="1" max="336" value="12" size="4" />
+      </label>
+      <label id="fromWrap" hidden>From
+        <input id="fromDt" type="datetime-local" />
+      </label>
+      <label id="toWrap" hidden>To
+        <input id="toDt" type="datetime-local" />
       </label>
       <button id="fetchAtlas" class="btn">Fetch from ATLAS</button>
     </div>
+    <div class="ctrl-row range-info"><span id="rangeInfo" class="status"></span></div>
 
     <details id="pasteWrap" class="paste">
       <summary>No rows auto-pulled? Paste the ATLAS CSV/TSV export here</summary>
@@ -59,7 +74,8 @@
 
   <section id="stops" class="stops"></section>
   <footer class="ft">
-    Serpentine heuristic (v1) — swap in the IND8 mod map later for an exact route.
+    Route picks the nearer end from your start bin and sweeps through — no forced
+    direction. 🔒 marks locked top/bottom shelves.
   </footer>
 
   <!-- Guided confirmation overlay -->
