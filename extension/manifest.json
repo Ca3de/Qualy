@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Qualy Pick Path",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Auto-pulls Pick Rejects/Shorts errors from ATLAS, enriches each with the FC Research item image, and curates the best walking path around the mods from a starting bin.",
   "author": "Ca3de",
   "homepage_url": "https://github.com/Ca3de/qualy",
@@ -48,7 +48,10 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "qualy-pick-path@ca3de",
-      "strict_min_version": "115.0"
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }
