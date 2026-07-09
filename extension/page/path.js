@@ -11,7 +11,7 @@
   let lastRoute = null;          // most recently built route
   let confirmState = null;       // { current } during a confirmation walk
   const decisions = new Map();   // errorKey -> { stop, decision, reason }
-  let reportDownloaded = false;  // has the current batch been downloaded yet?
+  const reportedKeys = new Set(); // decisions already written to a report
   let autoTimer = null;          // auto-crawl interval id
   let notifyCfg = { on: false, webhook: '', threshold: 5 };
   let notifyQueue = [];          // new errors not yet notified
@@ -22,6 +22,13 @@
     return [e.bin || '', e.lpn || e.fnsku || e.asin || '', e.time || ''].join('|');
   }
   const keyOfStop = (s) => errorKey(s && s.item);
+
+  // Decisions that haven't been written to a downloaded report yet.
+  function unreported() {
+    const out = [];
+    decisions.forEach((v, k) => { if (!reportedKeys.has(k)) out.push(v); });
+    return out;
+  }
 
   const els = {
     meta: $('meta'), start: $('startBin'), wh: $('warehouse'), enrich: $('enrich'),
@@ -70,7 +77,8 @@
     if (decisions.size && !window.confirm('Clear the checklist and all un-downloaded decisions?')) return;
     currentErrors = [];
     decisions.clear();
-    reportDownloaded = false;
+    reportedKeys.clear();
+    notifyQueue = [];
     persistSession();
     updateMeta();
     clearView();
@@ -413,7 +421,7 @@
     if (!pend.length) {
       // Auto-crawl mode: finish the batch by auto-downloading the report, then
       // wait for the next crawl to bring new errors (a fresh report).
-      if (els.autoCrawl.checked && decisions.size && !reportDownloaded) {
+      if (els.autoCrawl.checked && unreported().length) {
         finalizeReport(true);
         return renderAutoWaiting();
       }
@@ -510,10 +518,10 @@
   }
 
   function renderConfirmSummary() {
-    const results = [...decisions.values()];
+    const results = unreported();          // only the not-yet-reported batch
     const confirmed = results.filter(r => r.decision === 'confirmed').length;
     const denied = results.length - confirmed;
-    const msg = results.length ? 'All checked' : 'Nothing to check yet';
+    const msg = results.length ? 'All checked' : 'Nothing new to report';
 
     $('ovCard').innerHTML = `
       <div class="ov-top">
@@ -553,25 +561,22 @@
 
   // ---- Report ---------------------------------------------------------------
 
-  // Download the current batch of decisions, then clear it and drop the
-  // reported errors from the working set so the next round is a fresh report.
+  // Download the not-yet-reported decisions, then MARK them reported. Decisions
+  // and their errors stay in the checklist (shown with ✓/✕) so a crawl never
+  // re-surfaces a checked error. The next batch of decisions is a fresh report.
   function finalizeReport(auto) {
-    const results = [...decisions.values()];
+    const results = unreported();
     if (!results.length) return false;
     downloadReport(results, auto);
-    reportDownloaded = true;
-    const reportedKeys = new Set(decisions.keys());
-    currentErrors = currentErrors.filter(e => !reportedKeys.has(errorKey(e)));
-    decisions.clear();
+    results.forEach(r => reportedKeys.add(keyOfStop(r.stop)));
     persistSession();
     updateMeta();
-    if (currentErrors.length) build(); else clearView();
     return true;
   }
 
   function clearView() {
     lastRoute = null;
-    els.stops.innerHTML = '<div class="empty">Report downloaded — checklist cleared. New errors will start a fresh report.</div>';
+    els.stops.innerHTML = '<div class="empty">Checklist empty. Fetch or auto-crawl errors to begin.</div>';
     els.mini.innerHTML = '';
     const bar = $('confirmBar'); if (bar) bar.hidden = true;
   }
@@ -670,7 +675,6 @@
       known.add(k); currentErrors.push(e); added++;
       if (notifyArmed && notifyCfg.on) notifyQueue.push(e);
     }
-    if (added) reportDownloaded = false; // new batch re-arms the auto-report
     maybeNotify();
     return added;
   }
@@ -766,7 +770,7 @@
       decisions.forEach((v, k) => dec.push([k, v]));
       browser.storage.local.set({
         qualySession: {
-          errors: currentErrors, decisions: dec, reportDownloaded,
+          errors: currentErrors, decisions: dec, reported: [...reportedKeys],
           notifyQueue, warehouseId, startBin: els.start.value.trim(), ts: Date.now()
         }
       }).catch(() => {});
@@ -778,7 +782,8 @@
     currentErrors = Array.isArray(s.errors) ? s.errors : [];
     decisions.clear();
     (s.decisions || []).forEach(([k, v]) => decisions.set(k, v));
-    reportDownloaded = !!s.reportDownloaded;
+    reportedKeys.clear();
+    (s.reported || []).forEach(k => reportedKeys.add(k));
     notifyQueue = Array.isArray(s.notifyQueue) ? s.notifyQueue : [];
     if (s.startBin) els.start.value = s.startBin;
     warehouseId = s.warehouseId || warehouseId;

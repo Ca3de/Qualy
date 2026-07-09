@@ -120,13 +120,16 @@ manager, ASIN/FNSKU, item, qty, reason) plus confirmed/denied counts.
 
 ### 5. Auto-crawl (continuous mode)
 Tick **Auto-crawl** and the page re-queries ATLAS every N minutes and **merges
-new errors into the current checklist** (dedup by bin+LPN+time; already-checked
-items are never re-added). The checklist, your decisions, and the start bin are
-persisted, so a reload resumes the outstanding checklist. When you finish
-checking everything currently on the list, the report **auto-downloads** and the
-batch clears — the next crawl's errors start a **fresh report**. Decisions are
-shown live on the stop cards (✓ confirmed / ✕ denied). **Clear checklist** wipes
-the working set to start over.
+only new errors into the checklist** (dedup by bin+LPN+time). Checked errors and
+their decisions are kept permanently for the session, so a crawl **never
+re-surfaces an error you already checked** — even after its report has been
+downloaded (the same doc keeps coming back from ATLAS while it's inside the time
+window; the extension remembers it). The checklist, decisions, and start bin are
+persisted, so a reload resumes right where you left off. Decisions show live on
+the cards (✓ confirmed / ✕ denied). When you finish the pending items, the report
+**auto-downloads**; each report is the **delta** of newly-checked items since the
+last one. **Clear checklist** resets everything for a fresh start (e.g. new
+shift).
 
 ### 6. Slack notifications
 Open **🔔 Slack notifications**, paste a Slack **Incoming Webhook** URL, set the
