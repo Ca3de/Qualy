@@ -26,83 +26,77 @@
    * @param {string} startBinRaw  the picker's starting bin (or aisle).
    * @returns {{stops:Array, unrouted:Array, startBin:object, estAisleChanges:number}}
    */
+  // Sweep a set of aisle numbers from a start aisle: go to the nearer end
+  // first, then straight to the far end. Same reference used for both sides so
+  // the whole walk keeps one direction.
+  function sweepNearest(aisles, from) {
+    const sorted = aisles.slice().sort((a, b) => a - b);
+    if (from == null || sorted.length <= 1) return sorted;
+    let k = sorted.findIndex(a => a >= from);
+    if (k < 0) k = sorted.length;
+    const below = sorted.slice(0, k);
+    const above = sorted.slice(k);
+    const distLow = from - sorted[0];
+    const distHigh = sorted[sorted.length - 1] - from;
+    return distLow <= distHigh
+      ? below.slice().reverse().concat(above)   // nearer low end first
+      : above.concat(below.slice().reverse());  // nearer high end first
+  }
+
   function buildRoute(items, startBinRaw) {
-    const parsed = items.map((it, idx) => ({
-      idx,
-      item: it,
-      bin: Bin.parseBin(it.bin)
-    }));
+    const parsed = items.map((it, idx) => ({ idx, item: it, bin: Bin.parseBin(it.bin) }));
+    const routable = parsed.filter(p => p.bin.aisle != null);
+    const unrouted = parsed.filter(p => p.bin.aisle == null).map(p => p.item);
 
-    const routable = parsed.filter(p => p.bin.aisleKey);
-    const unrouted = parsed.filter(p => !p.bin.aisleKey).map(p => p.item);
-
-    // Group by aisle.
-    const aisleMap = new Map();
-    for (const p of routable) {
-      if (!aisleMap.has(p.bin.aisleKey)) aisleMap.set(p.bin.aisleKey, []);
-      aisleMap.get(p.bin.aisleKey).push(p);
-    }
-
-    // Lay the corridors on a 1-D line by aisle number (the green-mile axis).
-    // Each corridor holds both its A- and B-section bins.
-    const line = Array.from(aisleMap.keys()).sort((a, b) => {
-      return Bin.aisleRank(aisleMap.get(a)[0].bin) -
-             Bin.aisleRank(aisleMap.get(b)[0].bin);
-    });
-
-    // Efficient direction from the start: treat the aisles as points on a line
-    // and go to the NEARER end first, then sweep straight to the far end — the
-    // optimal cover for points on a line from an interior start. No forced
-    // desk->exit; whichever end is closer wins.
     const startBin = Bin.parseBin(startBinRaw);
-    const startRank = startBin.aisle != null ? Bin.aisleRank(startBin) : null;
+    const startAisle = startBin.aisle;   // number or null
+    const startSide = startBin.mod;      // 'A' | 'B' | null
 
-    let orderedKeys;
-    if (startRank == null || line.length <= 1) {
-      orderedKeys = line.slice();
-    } else {
-      const rankOf = (k) => Bin.aisleRank(aisleMap.get(k)[0].bin);
-      // Split point: first aisle at/after the start position.
-      let k = line.findIndex(key => rankOf(key) >= startRank);
-      if (k < 0) k = line.length;                 // start past the exit end
-      const below = line.slice(0, k);             // toward the desk/low end
-      const above = line.slice(k);                // toward the exit/high end
-      const distLow = startRank - rankOf(line[0]);
-      const distHigh = rankOf(line[line.length - 1]) - startRank;
-
-      if (distLow <= distHigh) {
-        // Low end nearer: sweep down to the low end, then up to the high end.
-        orderedKeys = below.slice().reverse().concat(above);
-      } else {
-        // High end nearer: sweep up to the high end, then down to the low end.
-        orderedKeys = above.concat(below.slice().reverse());
-      }
+    // Partition by side (A near exit, B near desk). The green mile between the
+    // sides is expensive to cross, so we do one side fully, cross once, then the
+    // other — never bouncing back and forth.
+    const sides = { A: [], B: [], '?': [] };
+    for (const p of routable) {
+      sides[(p.bin.mod === 'A' || p.bin.mod === 'B') ? p.bin.mod : '?'].push(p);
     }
 
-    // Within a corridor, order bins along its length (desk -> exit: B section
-    // then A section). Alternate direction each corridor so consecutive
-    // corridors connect without re-walking.
-    orderedKeys.forEach((key, i) => {
-      const rows = aisleMap.get(key);
-      rows.sort((a, b) => Bin.corridorDepth(a.bin) - Bin.corridorDepth(b.bin));
-      if (i % 2 === 1) rows.reverse();
-    });
+    // Do the start's side first (0 extra crossings), then the other side, then
+    // any unknown-mod bins. Empty sides are skipped.
+    let order = startSide === 'A' ? ['A', 'B', '?']
+             : startSide === 'B' ? ['B', 'A', '?']
+             : ['B', 'A', '?'];                     // default: desk side first
+    order = order.filter(s => sides[s].length);
 
     const stops = [];
-    let order = 1;
-    for (const key of orderedKeys) {
-      for (const p of aisleMap.get(key)) {
-        stops.push({
-          order: order++,
-          bin: p.bin.raw,
-          aisle: (p.bin.aisleLetter || '') + (p.bin.aisle == null ? '' : p.bin.aisle),
-          mod: p.bin.mod,
-          floor: p.bin.floor,
-          slot: p.bin.slot,
-          level: p.bin.level,
-          locked: p.bin.locked,
-          item: p.item
-        });
+    let n = 1;
+    let corridorCount = 0;
+    for (const side of order) {
+      // Group this side by aisle number.
+      const byAisle = new Map();
+      for (const p of sides[side]) {
+        if (!byAisle.has(p.bin.aisle)) byAisle.set(p.bin.aisle, []);
+        byAisle.get(p.bin.aisle).push(p);
+      }
+      // Both sides sweep from the SAME start aisle (the crossing sits near the
+      // start/desk), so the walk holds one direction instead of zig-zagging.
+      const aisles = sweepNearest(Array.from(byAisle.keys()), startAisle);
+      for (const a of aisles) {
+        corridorCount++;
+        const rows = byAisle.get(a);
+        rows.sort((r1, r2) => (r1.bin.slot || 0) - (r2.bin.slot || 0)); // dip order
+        for (const p of rows) {
+          stops.push({
+            order: n++,
+            bin: p.bin.raw,
+            aisle: (p.bin.aisleLetter || '') + (p.bin.aisle == null ? '' : p.bin.aisle),
+            mod: p.bin.mod,
+            floor: p.bin.floor,
+            slot: p.bin.slot,
+            level: p.bin.level,
+            locked: p.bin.locked,
+            item: p.item
+          });
+        }
       }
     }
 
@@ -110,7 +104,8 @@
       stops,
       unrouted,
       startBin,
-      estAisleChanges: Math.max(0, orderedKeys.length - 1)
+      crossings: Math.max(0, order.filter(s => s !== '?').length - 1),
+      estAisleChanges: Math.max(0, corridorCount - 1)
     };
   }
 

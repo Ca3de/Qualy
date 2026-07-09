@@ -329,7 +329,8 @@
       updateMeta();
       persistSession();
       notifyArmed = true; // initial backfill shown; notify only from here on
-      els.status.textContent = `Done — ${resp.route.stops.length} stops.`;
+      const x = resp.route.crossings || 0;
+      els.status.textContent = `Done — ${resp.route.stops.length} stops · ${x} green-mile crossing${x === 1 ? '' : 's'}.`;
     } catch (err) {
       els.status.textContent = 'Error: ' + err.message;
     } finally {
