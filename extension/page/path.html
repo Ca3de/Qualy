@@ -60,6 +60,19 @@
     </div>
     <div class="ctrl-row range-info"><span id="rangeInfo" class="status"></span></div>
 
+    <details id="notifyWrap" class="paste">
+      <summary>🔔 Slack notifications — ping every N new pick errors</summary>
+      <label class="chk"><input id="notifyOn" type="checkbox" /> Enable Slack pings</label>
+      <p class="hint">Create a Slack <b>Incoming Webhook</b> and paste its URL. A message is sent each time N new pick errors arrive.</p>
+      <label class="nfield">Webhook URL
+        <input id="notifyHook" type="text" placeholder="https://hooks.slack.com/services/T…/B…/…" />
+      </label>
+      <label class="nfield">Every
+        <input id="notifyThreshold" type="number" min="1" max="100" value="5" /> new errors
+      </label>
+      <button id="notifyTest" class="btn">Send test</button>
+    </details>
+
     <details id="pasteWrap" class="paste">
       <summary>No rows auto-pulled? Paste the ATLAS CSV/TSV export here</summary>
       <p class="hint">Paste rows copied from the dashboard (or the TamperMonkey CSV export).

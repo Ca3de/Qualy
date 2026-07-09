@@ -14,7 +14,8 @@
     "*://fcresearch.aka.amazon.com/*",
     "*://rodeo-iad.amazon.com/*",
     "*://m.media-amazon.com/*",
-    "*://images-na.ssl-images-amazon.com/*"
+    "*://images-na.ssl-images-amazon.com/*",
+    "https://hooks.slack.com/*"
   ],
 
   "background": {

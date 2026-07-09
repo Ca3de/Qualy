@@ -35,6 +35,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         .catch(err => { logError('atlasSearch', err); sendResponse({ error: err.message }); });
       return true; // async
 
+    case 'notify':
+      sendSlackWebhook(message.webhook, message.text)
+        .then(sendResponse)
+        .catch(err => sendResponse({ error: err.message }));
+      return true; // async
+
     case 'clearCache':
       fcCache.clear();
       sendResponse({ ok: true });
@@ -210,6 +216,31 @@ function firstStr(...vals) {
     if (s != null && String(s).trim() !== '') return String(s).trim();
   }
   return '';
+}
+
+// ---- Slack notifications ---------------------------------------------------
+
+// POST to a Slack Incoming Webhook. Done here (background) so the extension's
+// host permission for hooks.slack.com applies and there's no page CORS issue.
+async function sendSlackWebhook(webhook, text) {
+  if (!webhook || !/^https:\/\/hooks\.slack\.com\//.test(webhook)) {
+    return { error: 'Invalid Slack webhook URL' };
+  }
+  try {
+    const resp = await fetch(webhook, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      return { error: `Slack HTTP ${resp.status}${body ? ': ' + body.slice(0, 80) : ''}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    logError('Slack webhook', err);
+    return { error: err.message };
+  }
 }
 
 // ---- FC Research -----------------------------------------------------------

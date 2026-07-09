@@ -13,6 +13,9 @@
   const decisions = new Map();   // errorKey -> { stop, decision, reason }
   let reportDownloaded = false;  // has the current batch been downloaded yet?
   let autoTimer = null;          // auto-crawl interval id
+  let notifyCfg = { on: false, webhook: '', threshold: 5 };
+  let notifyQueue = [];          // new errors not yet notified
+  let notifyArmed = false;       // don't notify for the initial backfill
 
   function errorKey(e) {
     if (!e) return '';
@@ -28,12 +31,40 @@
     timeMode: $('timeMode'), hoursWrap: $('hoursWrap'), fromWrap: $('fromWrap'),
     toWrap: $('toWrap'), fromDt: $('fromDt'), toDt: $('toDt'), rangeInfo: $('rangeInfo'),
     autoCrawl: $('autoCrawl'), autoMin: $('autoMin'), autoMinWrap: $('autoMinWrap'),
-    clearBtn: $('clearBtn')
+    clearBtn: $('clearBtn'),
+    notifyOn: $('notifyOn'), notifyHook: $('notifyHook'),
+    notifyThreshold: $('notifyThreshold'), notifyTest: $('notifyTest')
   };
 
   els.autoCrawl.addEventListener('change', toggleAutoCrawl);
   els.autoMin.addEventListener('change', () => { if (els.autoCrawl.checked) toggleAutoCrawl(); });
   els.clearBtn.addEventListener('click', clearChecklist);
+
+  ['change', 'input'].forEach(ev => {
+    els.notifyOn.addEventListener(ev, saveNotifyCfg);
+    els.notifyHook.addEventListener(ev, saveNotifyCfg);
+    els.notifyThreshold.addEventListener(ev, saveNotifyCfg);
+  });
+  els.notifyTest.addEventListener('click', () => {
+    const hook = els.notifyHook.value.trim();
+    if (!hook) { els.status.textContent = 'Enter a Slack webhook URL first.'; return; }
+    browser.runtime.sendMessage({
+      type: 'notify', webhook: hook,
+      text: `:white_check_mark: Qualy Pick Path test — notifications working for ${els.wh.value.trim() || 'IND8'}.`
+    }).then(r => {
+      els.status.textContent = (r && r.error) ? 'Slack test failed: ' + r.error : 'Slack test sent ✓';
+    }).catch(e => { els.status.textContent = 'Slack test error: ' + e.message; });
+  });
+
+  function saveNotifyCfg() {
+    notifyCfg = {
+      on: els.notifyOn.checked,
+      webhook: els.notifyHook.value.trim(),
+      threshold: Math.max(1, parseInt(els.notifyThreshold.value, 10) || 5)
+    };
+    browser.storage.local.set({ qualyNotify: notifyCfg }).catch(() => {});
+    maybeNotify(); // in case the threshold was lowered below the queue
+  }
 
   function clearChecklist() {
     if (decisions.size && !window.confirm('Clear the checklist and all un-downloaded decisions?')) return;
@@ -142,9 +173,17 @@
 
   // ---- Load payload ---------------------------------------------------------
 
-  browser.storage.local.get(['qualyPayload', 'qualySession', 'qualyAuto']).then((r) => {
+  browser.storage.local.get(['qualyPayload', 'qualySession', 'qualyAuto', 'qualyNotify']).then((r) => {
     const p = (r && r.qualyPayload) || {};
     const hadSession = restoreSession(r && r.qualySession);
+
+    // Restore notification config.
+    if (r && r.qualyNotify) {
+      notifyCfg = Object.assign(notifyCfg, r.qualyNotify);
+      els.notifyOn.checked = !!notifyCfg.on;
+      els.notifyHook.value = notifyCfg.webhook || '';
+      els.notifyThreshold.value = notifyCfg.threshold || 5;
+    }
 
     warehouseId = p.warehouseId || warehouseId || 'IND8';
     els.wh.value = warehouseId;
@@ -248,6 +287,7 @@
       render(resp.route, startBin);
       updateMeta();
       persistSession();
+      notifyArmed = true; // initial backfill shown; notify only from here on
       els.status.textContent = `Done — ${resp.route.stops.length} stops.`;
     } catch (err) {
       els.status.textContent = 'Error: ' + err.message;
@@ -418,21 +458,31 @@
         <button class="btn primary confirm" id="ovConfirm">✓ Confirm error</button>
       </div>
       <div class="ov-deny" id="ovDenyBox" hidden>
-        <label>Reason for denial</label>
-        <input id="ovReason" type="text" placeholder="e.g. item present and scannable" />
+        <label id="ovReasonLabel">Reason</label>
+        <input id="ovReason" type="text" placeholder="type a reason…" />
         <div class="ov-deny-actions">
           <button class="btn" id="ovDenyCancel">Back</button>
-          <button class="btn primary" id="ovDenySave">Save denial</button>
+          <button class="btn primary" id="ovDenySave">Save</button>
         </div>
       </div>`;
 
-    $('ovClose').onclick = () => confirmExitGuard();
-    $('ovConfirm').onclick = () => recordDecision('confirmed', '');
-    $('ovDeny').onclick = () => {
+    // Rejects need a reason on BOTH confirm and deny; shorts only on deny.
+    function openReason(decision, label) {
+      confirmState.reasonFor = decision;
+      $('ovReasonLabel').textContent = label;
+      $('ovReason').value = '';
+      $('ovReason').classList.remove('err');
       $('ovActions').hidden = true;
       $('ovDenyBox').hidden = false;
       $('ovReason').focus();
+    }
+
+    $('ovClose').onclick = () => confirmExitGuard();
+    $('ovConfirm').onclick = () => {
+      if (isReject) openReason('confirmed', 'Reason for confirming this reject');
+      else recordDecision('confirmed', '');
     };
+    $('ovDeny').onclick = () => openReason('denied', 'Reason for denial');
     $('ovDenyCancel').onclick = () => {
       $('ovDenyBox').hidden = true;
       $('ovActions').hidden = false;
@@ -440,7 +490,7 @@
     $('ovDenySave').onclick = () => {
       const reason = $('ovReason').value.trim();
       if (!reason) { $('ovReason').focus(); $('ovReason').classList.add('err'); return; }
-      recordDecision('denied', reason);
+      recordDecision(confirmState.reasonFor || 'denied', reason);
     };
     $('ovReason').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('ovDenySave').click(); });
   }
@@ -618,9 +668,33 @@
       const k = errorKey(e);
       if (!k || known.has(k) || decisions.has(k)) continue;
       known.add(k); currentErrors.push(e); added++;
+      if (notifyArmed && notifyCfg.on) notifyQueue.push(e);
     }
     if (added) reportDownloaded = false; // new batch re-arms the auto-report
+    maybeNotify();
     return added;
+  }
+
+  // Slack ping every `threshold` new pick errors. Coalesces a big batch into a
+  // single message rather than one per 5.
+  function maybeNotify() {
+    if (!notifyCfg.on || !notifyCfg.webhook) return;
+    const t = Math.max(1, parseInt(notifyCfg.threshold, 10) || 5);
+    if (notifyQueue.length < t) return;
+    const batch = notifyQueue.splice(0, notifyQueue.length);
+    sendSlack(batch);
+    persistSession();
+  }
+
+  function sendSlack(batch) {
+    const lines = batch.slice(0, 12).map(e =>
+      `• ${e.bin || '?'} — ${(e.itemName || '').slice(0, 60)} (${e.source || 'error'}${e.lpn ? ', ' + e.lpn : ''})`);
+    if (batch.length > 12) lines.push(`…and ${batch.length - 12} more`);
+    const text = `:rotating_light: *${batch.length} new pick errors* at ${warehouseId} `
+      + `(checklist now ${currentErrors.length})\n` + lines.join('\n');
+    browser.runtime.sendMessage({ type: 'notify', webhook: notifyCfg.webhook, text })
+      .then(r => { if (r && r.error) els.status.textContent = 'Slack: ' + r.error; })
+      .catch(() => {});
   }
 
   async function autoCrawl() {
@@ -693,7 +767,7 @@
       browser.storage.local.set({
         qualySession: {
           errors: currentErrors, decisions: dec, reportDownloaded,
-          warehouseId, startBin: els.start.value.trim(), ts: Date.now()
+          notifyQueue, warehouseId, startBin: els.start.value.trim(), ts: Date.now()
         }
       }).catch(() => {});
     } catch (e) { /* ignore quota */ }
@@ -705,6 +779,7 @@
     decisions.clear();
     (s.decisions || []).forEach(([k, v]) => decisions.set(k, v));
     reportDownloaded = !!s.reportDownloaded;
+    notifyQueue = Array.isArray(s.notifyQueue) ? s.notifyQueue : [];
     if (s.startBin) els.start.value = s.startBin;
     warehouseId = s.warehouseId || warehouseId;
     return currentErrors.length > 0;

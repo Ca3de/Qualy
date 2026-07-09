@@ -110,8 +110,9 @@ Once a route is built, **Start confirmation walk** steps through the stops one
 at a time. Each card shows the next location, error type (reject/short), LPN,
 AA, item image + details, and two actions:
 
-- **Confirm error** — records it as a real error.
-- **Deny** — prompts for a reason, then records it.
+- **Confirm error** — records it as a real error. **Rejects also prompt for a
+  reason on confirm** (shorts confirm with no reason).
+- **Deny** — prompts for a reason, then records it (both shorts and rejects).
 
 After the last stop, a summary appears with a **Download report (.md)** button.
 The report lists every checked item (result, bin, aisle, error type, LPN, AA,
@@ -126,6 +127,19 @@ checking everything currently on the list, the report **auto-downloads** and the
 batch clears — the next crawl's errors start a **fresh report**. Decisions are
 shown live on the stop cards (✓ confirmed / ✕ denied). **Clear checklist** wipes
 the working set to start over.
+
+### 6. Slack notifications
+Open **🔔 Slack notifications**, paste a Slack **Incoming Webhook** URL, set the
+threshold (default every 5), and enable. Each time N new pick errors arrive
+(from a crawl, fetch, or paste) the extension posts a Slack message listing the
+new bins/items. The POST is sent from the background script (which holds the
+`hooks.slack.com` host permission), so there's no page CORS issue. The initial
+backfill is not notified — only errors that arrive after the page loads. Use
+**Send test** to verify the webhook.
+
+## Permissions (added)
+
+- `hooks.slack.com` — post notification messages to your Slack webhook.
 
 ## Usage
 
