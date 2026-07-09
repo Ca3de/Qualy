@@ -87,11 +87,12 @@
     }
 
     if (out.aisleLetter != null && out.aisle != null) {
-      // Stable key that groups every bin on the same aisle together.
+      // Corridor key: aisle NUMBER only (NOT the mod). A112 and B112 are two
+      // halves of the same physical corridor ("same line"), so they group
+      // together and are walked as one stop-group.
       out.aisleKey = [
         out.module || '?',
         out.floor == null ? '?' : out.floor,
-        out.aisleLetter,
         String(out.aisle).padStart(4, '0')
       ].join('|');
     }
@@ -99,24 +100,28 @@
     return out;
   }
 
-  // Module walk order (desk -> exit): B Mod (desk side) before A Mod (exit side).
-  function modRank(letter) {
-    if (letter === 'B') return 0;
-    if (letter === 'A') return 1;
-    return 2;
-  }
-
   /**
-   * Comparable numeric rank that lays aisles out along the desk->exit walk:
-   * B Mod before A Mod, then by floor, then by aisle number (the cross-sweep).
-   * Slot direction (500->100 toward the exit) is handled by the serpentine in
-   * pathfinding, not here.
+   * Corridor rank along the green-mile highway: by floor, then aisle NUMBER.
+   * The mod (A/B) is deliberately ignored here — A and B of the same aisle
+   * number are the same corridor, serviced together. This makes the route sweep
+   * the aisle-number axis once instead of doing all of B then all of A.
    */
   function aisleRank(bin) {
     const floor = bin.floor == null ? 0 : bin.floor;
     const aisle = bin.aisle == null ? 0 : bin.aisle;
-    return modRank(bin.aisleLetter) * 1e9 + floor * 1e6 + aisle;
+    return floor * 1e6 + aisle;
   }
 
-  root.QualyBin = { parseBin, aisleRank, modRank, CORE_RE };
+  /**
+   * Position along a corridor, desk -> exit. The green mile sits at the low-slot
+   * (~100) end of both sections; B (desk side) is negative, A (exit side) is
+   * positive, so B is always ordered before A with no overlap regardless of
+   * slot magnitude.
+   */
+  function corridorDepth(bin) {
+    const s = bin.slot == null ? 0 : bin.slot;
+    return bin.aisleLetter === 'A' ? (1000 - s) : (-s);
+  }
+
+  root.QualyBin = { parseBin, aisleRank, corridorDepth, CORE_RE };
 })(typeof self !== 'undefined' ? self : this);

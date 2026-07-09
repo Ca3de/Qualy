@@ -86,13 +86,22 @@ three appear on the stop cards and in the confirmation walk / report.
 | `F` | **Shelf level** — `A`=bottom … `G`=top (**A & G are locked**, need a key) |
 | `363` | **Position along the aisle** — 500 (desk) … 100 (midpoint), mirrored per mod |
 
-`lib/pathfinding.js` lays the aisles on the desk↔exit line (B Mod … A Mod) and
-routes for **efficiency, not a forced direction**:
+**Geometry:** the aisle *number* is the corridor. A-section (near the exit) and
+B-section (near the desk) of the same number are two halves of the **same
+corridor**, split by the "green mile" highway — so `A112` and `B112` are on the
+same line. Pickers travel the green mile horizontally by aisle number and dip up
+into A or down into B.
 
-1. From the start bin, head to the **nearer end first**, then sweep straight to
-   the far end — the optimal cover for stops on a line from an interior start.
-2. **Serpentine the slots** within each aisle (alternating direction) so an
-   aisle is never walked end-to-end twice.
+`lib/pathfinding.js` therefore routes by **corridor (aisle number)**, not by mod:
+
+1. Group bins by aisle number — an A bin and B bin of the same number are one
+   stop-group (so you never sweep all of B and then walk the whole span back
+   through A).
+2. From the start bin's aisle, head to the **nearer end first**, then sweep the
+   aisle-number axis straight to the far end (optimal single-pass cover),
+   dipping up/down to each side as you pass.
+3. Within a corridor, order bins along its length (desk→exit: B section then A
+   section), alternating each corridor.
 
 Bins on locked levels are flagged with 🔒 so the picker knows a key is needed.
 The bottom shelf is always `A`; the top letter varies by aisle (`G` on some,

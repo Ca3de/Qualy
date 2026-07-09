@@ -43,8 +43,8 @@
       aisleMap.get(p.bin.aisleKey).push(p);
     }
 
-    // Lay every aisle out on the desk->exit line (B Mod, then A Mod; aisle
-    // number ascending within a mod). This is a 1-D travel line.
+    // Lay the corridors on a 1-D line by aisle number (the green-mile axis).
+    // Each corridor holds both its A- and B-section bins.
     const line = Array.from(aisleMap.keys()).sort((a, b) => {
       return Bin.aisleRank(aisleMap.get(a)[0].bin) -
              Bin.aisleRank(aisleMap.get(b)[0].bin);
@@ -79,12 +79,13 @@
       }
     }
 
-    // Serpentine within each aisle: alternate slot direction each aisle so we
-    // don't re-walk an aisle end to end.
+    // Within a corridor, order bins along its length (desk -> exit: B section
+    // then A section). Alternate direction each corridor so consecutive
+    // corridors connect without re-walking.
     orderedKeys.forEach((key, i) => {
       const rows = aisleMap.get(key);
-      rows.sort((a, b) => (a.bin.slot || 0) - (b.bin.slot || 0)); // ascending
-      if (i % 2 === 0) rows.reverse();
+      rows.sort((a, b) => Bin.corridorDepth(a.bin) - Bin.corridorDepth(b.bin));
+      if (i % 2 === 1) rows.reverse();
     });
 
     const stops = [];
