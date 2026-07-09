@@ -9,7 +9,16 @@
   let currentErrors = [];
   let warehouseId = 'IND8';
   let lastRoute = null;          // most recently built route
-  let confirmState = null;       // { i, results:[] } during a confirmation walk
+  let confirmState = null;       // { current } during a confirmation walk
+  const decisions = new Map();   // errorKey -> { stop, decision, reason }
+  let reportDownloaded = false;  // has the current batch been downloaded yet?
+  let autoTimer = null;          // auto-crawl interval id
+
+  function errorKey(e) {
+    if (!e) return '';
+    return [e.bin || '', e.lpn || e.fnsku || e.asin || '', e.time || ''].join('|');
+  }
+  const keyOfStop = (s) => errorKey(s && s.item);
 
   const els = {
     meta: $('meta'), start: $('startBin'), wh: $('warehouse'), enrich: $('enrich'),
@@ -17,8 +26,25 @@
     pasteBox: $('pasteBox'), parsePaste: $('parsePaste'),
     types: $('types'), hours: $('hours'), fetchAtlas: $('fetchAtlas'),
     timeMode: $('timeMode'), hoursWrap: $('hoursWrap'), fromWrap: $('fromWrap'),
-    toWrap: $('toWrap'), fromDt: $('fromDt'), toDt: $('toDt'), rangeInfo: $('rangeInfo')
+    toWrap: $('toWrap'), fromDt: $('fromDt'), toDt: $('toDt'), rangeInfo: $('rangeInfo'),
+    autoCrawl: $('autoCrawl'), autoMin: $('autoMin'), autoMinWrap: $('autoMinWrap'),
+    clearBtn: $('clearBtn')
   };
+
+  els.autoCrawl.addEventListener('change', toggleAutoCrawl);
+  els.autoMin.addEventListener('change', () => { if (els.autoCrawl.checked) toggleAutoCrawl(); });
+  els.clearBtn.addEventListener('click', clearChecklist);
+
+  function clearChecklist() {
+    if (decisions.size && !window.confirm('Clear the checklist and all un-downloaded decisions?')) return;
+    currentErrors = [];
+    decisions.clear();
+    reportDownloaded = false;
+    persistSession();
+    updateMeta();
+    clearView();
+    els.status.textContent = 'Checklist cleared.';
+  }
 
   // ---- Time range handling --------------------------------------------------
 
@@ -116,29 +142,47 @@
 
   // ---- Load payload ---------------------------------------------------------
 
-  browser.storage.local.get('qualyPayload').then((r) => {
+  browser.storage.local.get(['qualyPayload', 'qualySession', 'qualyAuto']).then((r) => {
     const p = (r && r.qualyPayload) || {};
-    currentErrors = Array.isArray(p.errors) ? p.errors : [];
-    warehouseId = p.warehouseId || 'IND8';
+    const hadSession = restoreSession(r && r.qualySession);
+
+    warehouseId = p.warehouseId || warehouseId || 'IND8';
     els.wh.value = warehouseId;
-    els.start.value = p.startBin || '';
+    if (p.startBin) els.start.value = p.startBin;
     if (typeof p.enrich === 'boolean') els.enrich.checked = p.enrich;
     if (p.types) els.types.value = p.types;
     if (p.hoursBack) els.hours.value = p.hoursBack;
     if (p.timeMode) els.timeMode.value = p.timeMode;
     onTimeModeChange();
 
+    // Restore auto-crawl toggle.
+    const auto = r && r.qualyAuto;
+    if (auto) {
+      els.autoCrawl.checked = !!auto.on;
+      if (auto.min) els.autoMin.value = auto.min;
+    }
+
     if (p.mode === 'api') {
-      fetchFromAtlas(); // pull errors directly, then auto-build
-    } else if (currentErrors.length) {
+      fetchFromAtlas();                     // pull + merge into the checklist
+    } else if (p.mode === 'rows' && Array.isArray(p.errors)) {
+      mergeErrors(p.errors);
       updateMeta();
-      build();
+      if (currentErrors.length) build(); else showEmpty();
+    } else if (hadSession && currentErrors.length) {
+      updateMeta();
+      build();                              // resume the outstanding checklist
     } else {
       updateMeta();
-      els.stops.innerHTML = '<div class="empty">No errors loaded. Click <b>Fetch from ATLAS</b> above, paste the CSV/TSV export, or go back to the dashboard and click “Pull errors &amp; build path”.</div>';
-      $('pasteWrap').open = true;
+      showEmpty();
     }
+
+    if (els.autoCrawl.checked) toggleAutoCrawl();
   });
+
+  function showEmpty() {
+    els.stops.innerHTML = '<div class="empty">No errors loaded. Click <b>Fetch from ATLAS</b> above, paste the CSV/TSV export, or go back to the dashboard and open the panel.</div>';
+    $('pasteWrap').open = true;
+  }
 
   // ---- Direct ATLAS pull (OpenSearch API via background) --------------------
 
@@ -157,13 +201,13 @@
       else { opts.fromISO = range.fromISO; opts.toISO = range.toISO; }
       const resp = await browser.runtime.sendMessage({ type: 'atlasSearch', opts });
       if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
-      currentErrors = resp.errors || [];
+      const added = mergeErrors(resp.errors || []);
       updateMeta();
       if (!currentErrors.length) {
         els.status.textContent = `ATLAS returned 0 usable errors for that window (matched ${resp.total || 0} docs).`;
         els.stops.innerHTML = '<div class="empty">No errors in that time window. Widen the lookback, change the error type, or use the paste fallback.</div>';
       } else {
-        els.status.textContent = `Pulled ${currentErrors.length} errors from ATLAS.`;
+        els.status.textContent = `Pulled ${resp.errors ? resp.errors.length : 0} · +${added} new · ${currentErrors.length} in checklist.`;
         build();
       }
     } catch (err) {
@@ -177,7 +221,9 @@
   function updateMeta() {
     const rejects = currentErrors.filter(e => e.source === 'reject').length;
     const shorts = currentErrors.length - rejects;
-    els.meta.textContent = `${currentErrors.length} errors (${rejects} rejects, ${shorts} shorts) · ${warehouseId}`;
+    const checked = currentErrors.filter(e => decisions.has(errorKey(e))).length;
+    els.meta.textContent =
+      `${currentErrors.length} errors (${rejects} rej, ${shorts} short) · ${checked} checked · ${warehouseId}`;
   }
 
   // ---- Build (route + enrich via background) --------------------------------
@@ -200,6 +246,8 @@
       });
       if (!resp || resp.error) throw new Error(resp ? resp.error : 'no response');
       render(resp.route, startBin);
+      updateMeta();
+      persistSession();
       els.status.textContent = `Done — ${resp.route.stops.length} stops.`;
     } catch (err) {
       els.status.textContent = 'Error: ' + err.message;
@@ -237,6 +285,7 @@
     }
     els.stops.innerHTML = '';
     els.stops.appendChild(frag);
+    applyDecisionMarks();
   }
 
   function renderStop(s) {
@@ -247,6 +296,7 @@
 
     const wrap = document.createElement('div');
     wrap.className = 'stop';
+    wrap.dataset.key = keyOfStop(s);
 
     const badge = it.source === 'reject'
       ? `<span class="badge reject">reject</span>`
@@ -278,6 +328,7 @@
           <span class="aisle-tag">aisle ${escapeHtml(s.aisle || '?')}${s.level ? ' · level ' + escapeHtml(s.level) : ''}${s.slot != null ? ' · slot ' + s.slot : ''}</span>
           ${badge}
           ${s.locked ? '<span class="badge locked" title="Top/bottom shelf — key needed">🔒 locked</span>' : ''}
+          <span class="stop-status"></span>
         </div>
         ${name ? `<div class="name">${escapeHtml(name)}</div>` : ''}
         <div class="kv">${qty}<b>LPN</b> ${escapeHtml(it.lpn || '—')} · <b>AA</b> ${escapeHtml(it.aa || '—')}${it.manager ? ' · <b>Mgr</b> ' + escapeHtml(it.manager) : ''}</div>
@@ -292,15 +343,20 @@
     return wrap;
   }
 
-  // ---- Guided confirmation walk --------------------------------------------
+  // ---- Guided confirmation walk (key-based, live checklist) ----------------
 
   document.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'startConfirm') startConfirm();
   });
 
+  // Stops still needing a decision, in route order.
+  function pendingStops() {
+    return lastRoute ? lastRoute.stops.filter(s => !decisions.has(keyOfStop(s))) : [];
+  }
+
   function startConfirm() {
     if (!lastRoute || !lastRoute.stops.length) return;
-    confirmState = { i: 0, results: [] };
+    confirmState = {};
     $('overlay').hidden = false;
     document.body.style.overflow = 'hidden';
     renderConfirmStep();
@@ -313,11 +369,22 @@
   }
 
   function renderConfirmStep() {
-    const stops = lastRoute.stops;
-    const i = confirmState.i;
-    if (i >= stops.length) return renderConfirmSummary();
+    const pend = pendingStops();
+    if (!pend.length) {
+      // Auto-crawl mode: finish the batch by auto-downloading the report, then
+      // wait for the next crawl to bring new errors (a fresh report).
+      if (els.autoCrawl.checked && decisions.size && !reportDownloaded) {
+        finalizeReport(true);
+        return renderAutoWaiting();
+      }
+      return renderConfirmSummary();
+    }
 
-    const s = stops[i];
+    const s = pend[0];
+    confirmState.current = s;
+    const total = lastRoute.stops.length;
+    const done = total - pend.length;
+
     const it = s.item || {};
     const fc = s.fc || {};
     const img = fc.imageDataUrl || fc.imageUrl;
@@ -326,7 +393,7 @@
 
     $('ovCard').innerHTML = `
       <div class="ov-top">
-        <span class="ov-prog">Location ${i + 1} of ${stops.length}</span>
+        <span class="ov-prog">Location ${done + 1} of ${total}${pend.length > 1 ? ` · ${pend.length} left` : ''}</span>
         <button class="ov-x" id="ovClose" title="Exit">✕</button>
       </div>
       <div class="ov-bin">${escapeHtml(s.bin)}</div>
@@ -379,30 +446,28 @@
   }
 
   function recordDecision(decision, reason) {
-    const s = lastRoute.stops[confirmState.i];
-    confirmState.results.push({ stop: s, decision, reason });
-    confirmState.i++;
+    const s = confirmState.current;
+    if (!s) return;
+    decisions.set(keyOfStop(s), { stop: slimStop(s), decision, reason });
+    persistSession();
+    markStopCard(s);
     renderConfirmStep();
   }
 
   function confirmExitGuard() {
-    const done = confirmState.results.length;
-    if (done > 0 && done < lastRoute.stops.length &&
-        !window.confirm(`Exit the walk? ${done} of ${lastRoute.stops.length} recorded — you can still download a partial report.`)) {
-      return;
-    }
-    if (done > 0) renderConfirmSummary();
-    else closeConfirm();
+    // Everything is saved as you go, so exiting is safe.
+    closeConfirm();
   }
 
   function renderConfirmSummary() {
-    const results = confirmState.results;
+    const results = [...decisions.values()];
     const confirmed = results.filter(r => r.decision === 'confirmed').length;
     const denied = results.length - confirmed;
+    const msg = results.length ? 'All checked' : 'Nothing to check yet';
 
     $('ovCard').innerHTML = `
       <div class="ov-top">
-        <span class="ov-prog">Walk complete — ${results.length} checked</span>
+        <span class="ov-prog">${msg} — ${results.length} in this report</span>
         <button class="ov-x" id="ovClose" title="Close">✕</button>
       </div>
       <div class="ov-summary">
@@ -412,18 +477,56 @@
       </div>
       <div class="ov-actions">
         <button class="btn" id="ovCloseBtn">Close</button>
-        <button class="btn primary" id="ovDownload">⬇ Download report (.md)</button>
+        <button class="btn primary" id="ovDownload"${results.length ? '' : ' disabled'}>⬇ Download report &amp; start new</button>
       </div>
       <div class="ov-note" id="ovNote"></div>`;
 
     $('ovClose').onclick = closeConfirm;
     $('ovCloseBtn').onclick = closeConfirm;
-    $('ovDownload').onclick = () => downloadReport(results);
+    $('ovDownload').onclick = () => { finalizeReport(); closeConfirm(); };
+  }
+
+  function renderAutoWaiting() {
+    $('ovCard').innerHTML = `
+      <div class="ov-top">
+        <span class="ov-prog">Report saved · auto-crawl on</span>
+        <button class="ov-x" id="ovClose" title="Close">✕</button>
+      </div>
+      <div class="ov-summary">
+        <div class="sum-tile ok"><div class="n">✓</div><div>Report downloaded</div></div>
+      </div>
+      <p class="ov-wait">Waiting for new errors from ATLAS. When the next crawl finds any, they're added to the checklist and you can keep checking — a fresh report starts automatically.</p>
+      <div class="ov-actions"><button class="btn" id="ovCloseBtn">Close</button></div>`;
+    $('ovClose').onclick = closeConfirm;
+    $('ovCloseBtn').onclick = closeConfirm;
   }
 
   // ---- Report ---------------------------------------------------------------
 
-  function downloadReport(results) {
+  // Download the current batch of decisions, then clear it and drop the
+  // reported errors from the working set so the next round is a fresh report.
+  function finalizeReport(auto) {
+    const results = [...decisions.values()];
+    if (!results.length) return false;
+    downloadReport(results, auto);
+    reportDownloaded = true;
+    const reportedKeys = new Set(decisions.keys());
+    currentErrors = currentErrors.filter(e => !reportedKeys.has(errorKey(e)));
+    decisions.clear();
+    persistSession();
+    updateMeta();
+    if (currentErrors.length) build(); else clearView();
+    return true;
+  }
+
+  function clearView() {
+    lastRoute = null;
+    els.stops.innerHTML = '<div class="empty">Report downloaded — checklist cleared. New errors will start a fresh report.</div>';
+    els.mini.innerHTML = '';
+    const bar = $('confirmBar'); if (bar) bar.hidden = true;
+  }
+
+  function downloadReport(results, auto) {
     const md = buildReportMarkdown(results);
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const fname = `pick-verification-${warehouseId}-${stamp}.md`;
@@ -433,8 +536,8 @@
     a.href = url; a.download = fname;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
-    const note = $('ovNote');
-    if (note) note.textContent = `Saved ${fname}`;
+    els.status.textContent = `${auto ? 'Auto-saved' : 'Saved'} report: ${fname}`;
+    const note = $('ovNote'); if (note) note.textContent = `Saved ${fname}`;
   }
 
   function buildReportMarkdown(results) {
@@ -495,6 +598,118 @@
     return String(s || '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim();
   }
 
+  // ---- Auto-crawl + session persistence ------------------------------------
+
+  // A route stop without the (heavy) FC image — safe to persist and enough for
+  // the report.
+  function slimStop(s) {
+    return {
+      order: s.order, bin: s.bin, aisle: s.aisle, mod: s.mod, floor: s.floor,
+      slot: s.slot, level: s.level, locked: s.locked, item: s.item
+    };
+  }
+
+  // Merge freshly-crawled errors into the working checklist (dedup by key,
+  // skipping anything already decided). Returns how many were added.
+  function mergeErrors(incoming) {
+    const known = new Set(currentErrors.map(errorKey));
+    let added = 0;
+    for (const e of incoming || []) {
+      const k = errorKey(e);
+      if (!k || known.has(k) || decisions.has(k)) continue;
+      known.add(k); currentErrors.push(e); added++;
+    }
+    if (added) reportDownloaded = false; // new batch re-arms the auto-report
+    return added;
+  }
+
+  async function autoCrawl() {
+    if (!els.autoCrawl.checked) return;
+    const range = resolveTimeRange();
+    if (range.error) { els.status.textContent = 'Auto-crawl: ' + range.error; return; }
+    warehouseId = els.wh.value.trim() || 'IND8';
+    try {
+      const opts = { warehouseId, types: els.types.value };
+      if (range.hoursBack) opts.hoursBack = range.hoursBack;
+      else { opts.fromISO = range.fromISO; opts.toISO = range.toISO; }
+      const resp = await browser.runtime.sendMessage({ type: 'atlasSearch', opts });
+      if (!resp || resp.error) { els.status.textContent = 'Auto-crawl: ' + (resp ? resp.error : 'no response'); return; }
+      const added = mergeErrors(resp.errors || []);
+      const t = new Date().toLocaleTimeString();
+      if (added) {
+        await build();
+        els.status.textContent = `Auto-crawl: +${added} new error(s) added to checklist (${t})`;
+        // If a walk is open and idle on the summary, advance into the new items.
+        if (confirmState && !$('overlay').hidden) renderConfirmStep();
+      } else {
+        els.status.textContent = `Auto-crawl: no new errors (${t})`;
+      }
+    } catch (err) {
+      els.status.textContent = 'Auto-crawl error: ' + err.message;
+    }
+  }
+
+  function toggleAutoCrawl() {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    els.autoMinWrap.hidden = !els.autoCrawl.checked;
+    if (els.autoCrawl.checked) {
+      const min = Math.max(1, parseInt(els.autoMin.value, 10) || 5);
+      autoCrawl();
+      autoTimer = setInterval(autoCrawl, min * 60000);
+    }
+    browser.storage.local.set({
+      qualyAuto: { on: els.autoCrawl.checked, min: parseInt(els.autoMin.value, 10) || 5 }
+    }).catch(() => {});
+  }
+
+  // ---- Decision marks on the list ------------------------------------------
+
+  function applyDecClass(card, dec) {
+    card.classList.remove('done-confirm', 'done-deny');
+    const st = card.querySelector('.stop-status');
+    if (!dec) { if (st) st.textContent = ''; return; }
+    card.classList.add(dec.decision === 'confirmed' ? 'done-confirm' : 'done-deny');
+    if (st) st.textContent = dec.decision === 'confirmed' ? '✓ confirmed' : '✕ denied';
+  }
+
+  function markStopCard(s) {
+    const k = keyOfStop(s);
+    els.stops.querySelectorAll('.stop').forEach(c => {
+      if (c.dataset.key === k) applyDecClass(c, decisions.get(k));
+    });
+    updateMeta();
+  }
+
+  function applyDecisionMarks() {
+    els.stops.querySelectorAll('.stop').forEach(c => applyDecClass(c, decisions.get(c.dataset.key)));
+  }
+
+  // ---- Session persistence --------------------------------------------------
+
+  function persistSession() {
+    try {
+      const dec = [];
+      decisions.forEach((v, k) => dec.push([k, v]));
+      browser.storage.local.set({
+        qualySession: {
+          errors: currentErrors, decisions: dec, reportDownloaded,
+          warehouseId, startBin: els.start.value.trim(), ts: Date.now()
+        }
+      }).catch(() => {});
+    } catch (e) { /* ignore quota */ }
+  }
+
+  function restoreSession(s) {
+    if (!s) return false;
+    currentErrors = Array.isArray(s.errors) ? s.errors : [];
+    decisions.clear();
+    (s.decisions || []).forEach(([k, v]) => decisions.set(k, v));
+    reportDownloaded = !!s.reportDownloaded;
+    if (s.startBin) els.start.value = s.startBin;
+    warehouseId = s.warehouseId || warehouseId;
+    return currentErrors.length > 0;
+  }
+
   // ---- CSV / TSV paste fallback --------------------------------------------
 
   els.parsePaste.addEventListener('click', () => {
@@ -503,9 +718,9 @@
     const rows = parseDelimited(text);
     const errors = rowsToErrors(rows);
     if (!errors.length) { els.status.textContent = 'Could not find bin + fnsku/asin columns in the pasted text.'; return; }
-    currentErrors = errors;
+    const added = mergeErrors(errors);
     updateMeta();
-    els.status.textContent = `Loaded ${errors.length} rows from paste.`;
+    els.status.textContent = `Pasted ${errors.length} rows · +${added} new · ${currentErrors.length} in checklist.`;
     build();
   });
 

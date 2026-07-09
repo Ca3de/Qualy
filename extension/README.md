@@ -115,7 +115,17 @@ AA, item image + details, and two actions:
 
 After the last stop, a summary appears with a **Download report (.md)** button.
 The report lists every checked item (result, bin, aisle, error type, LPN, AA,
-ASIN/FNSKU, item, qty, reason) plus confirmed/denied counts.
+manager, ASIN/FNSKU, item, qty, reason) plus confirmed/denied counts.
+
+### 5. Auto-crawl (continuous mode)
+Tick **Auto-crawl** and the page re-queries ATLAS every N minutes and **merges
+new errors into the current checklist** (dedup by bin+LPN+time; already-checked
+items are never re-added). The checklist, your decisions, and the start bin are
+persisted, so a reload resumes the outstanding checklist. When you finish
+checking everything currently on the list, the report **auto-downloads** and the
+batch clears — the next crawl's errors start a **fresh report**. Decisions are
+shown live on the stop cards (✓ confirmed / ✕ denied). **Clear checklist** wipes
+the working set to start over.
 
 ## Usage
 
