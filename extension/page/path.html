@@ -63,9 +63,15 @@
     <details id="notifyWrap" class="paste">
       <summary>🔔 Slack notifications — ping every N new pick errors</summary>
       <label class="chk"><input id="notifyOn" type="checkbox" /> Enable Slack pings</label>
-      <p class="hint">Create a Slack <b>Incoming Webhook</b> and paste its URL. A message is sent each time N new pick errors arrive.</p>
+      <p class="hint">Works with a Slack <b>Workflow</b> webhook (no app/admin approval needed):
+        Workflow Builder → <i>“Starts with a webhook”</i> → add a <b>Text</b> variable (e.g. <code>message</code>)
+        → add a step that posts that variable to your channel → publish and copy the URL.
+        Classic <b>Incoming Webhook</b> URLs (<code>/services/…</code>) also work.</p>
       <label class="nfield">Webhook URL
-        <input id="notifyHook" type="text" placeholder="https://hooks.slack.com/services/T…/B…/…" />
+        <input id="notifyHook" type="text" placeholder="https://hooks.slack.com/triggers/…  (or /services/…)" />
+      </label>
+      <label class="nfield" id="notifyVarWrap" hidden>Message variable name (Workflow webhooks)
+        <input id="notifyVar" type="text" value="message" />
       </label>
       <label class="nfield">Every
         <input id="notifyThreshold" type="number" min="1" max="100" value="5" /> new errors

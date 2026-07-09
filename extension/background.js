@@ -36,7 +36,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // async
 
     case 'notify':
-      sendSlackWebhook(message.webhook, message.text)
+      sendSlackWebhook(message.webhook, message.body || { text: message.text })
         .then(sendResponse)
         .catch(err => sendResponse({ error: err.message }));
       return true; // async
@@ -220,21 +220,23 @@ function firstStr(...vals) {
 
 // ---- Slack notifications ---------------------------------------------------
 
-// POST to a Slack Incoming Webhook. Done here (background) so the extension's
-// host permission for hooks.slack.com applies and there's no page CORS issue.
-async function sendSlackWebhook(webhook, text) {
+// POST to a Slack webhook — supports classic Incoming Webhooks (/services/,
+// body {text}) and Workflow Builder webhooks (/triggers/, body of flat
+// variables). The caller shapes the body. Done here (background) so the
+// hooks.slack.com host permission applies and there's no page CORS issue.
+async function sendSlackWebhook(webhook, body) {
   if (!webhook || !/^https:\/\/hooks\.slack\.com\//.test(webhook)) {
-    return { error: 'Invalid Slack webhook URL' };
+    return { error: 'Invalid Slack webhook URL (must be hooks.slack.com)' };
   }
   try {
     const resp = await fetch(webhook, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify(body || {})
     });
     if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      return { error: `Slack HTTP ${resp.status}${body ? ': ' + body.slice(0, 80) : ''}` };
+      const txt = await resp.text().catch(() => '');
+      return { error: `Slack HTTP ${resp.status}${txt ? ': ' + txt.slice(0, 100) : ''}` };
     }
     return { ok: true };
   } catch (err) {

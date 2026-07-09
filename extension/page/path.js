@@ -13,7 +13,7 @@
   const decisions = new Map();   // errorKey -> { stop, decision, reason }
   const reportedKeys = new Set(); // decisions already written to a report
   let autoTimer = null;          // auto-crawl interval id
-  let notifyCfg = { on: false, webhook: '', threshold: 5 };
+  let notifyCfg = { on: false, webhook: '', threshold: 5, varName: 'message' };
   let notifyQueue = [];          // new errors not yet notified
   let notifyArmed = false;       // don't notify for the initial backfill
 
@@ -40,7 +40,8 @@
     autoCrawl: $('autoCrawl'), autoMin: $('autoMin'), autoMinWrap: $('autoMinWrap'),
     clearBtn: $('clearBtn'),
     notifyOn: $('notifyOn'), notifyHook: $('notifyHook'),
-    notifyThreshold: $('notifyThreshold'), notifyTest: $('notifyTest')
+    notifyThreshold: $('notifyThreshold'), notifyTest: $('notifyTest'),
+    notifyVar: $('notifyVar'), notifyVarWrap: $('notifyVarWrap')
   };
 
   els.autoCrawl.addEventListener('change', toggleAutoCrawl);
@@ -51,25 +52,27 @@
     els.notifyOn.addEventListener(ev, saveNotifyCfg);
     els.notifyHook.addEventListener(ev, saveNotifyCfg);
     els.notifyThreshold.addEventListener(ev, saveNotifyCfg);
+    els.notifyVar.addEventListener(ev, saveNotifyCfg);
   });
   els.notifyTest.addEventListener('click', () => {
-    const hook = els.notifyHook.value.trim();
-    if (!hook) { els.status.textContent = 'Enter a Slack webhook URL first.'; return; }
-    browser.runtime.sendMessage({
-      type: 'notify', webhook: hook,
-      text: `:white_check_mark: Qualy Pick Path test — notifications working for ${els.wh.value.trim() || 'IND8'}.`
-    }).then(r => {
+    saveNotifyCfg();
+    if (!notifyCfg.webhook) { els.status.textContent = 'Enter a Slack webhook URL first.'; return; }
+    const text = `:white_check_mark: Qualy Pick Path test — notifications working for ${els.wh.value.trim() || 'IND8'}.`;
+    els.status.textContent = 'Sending Slack test…';
+    postSlack(text).then(r => {
       els.status.textContent = (r && r.error) ? 'Slack test failed: ' + r.error : 'Slack test sent ✓';
-    }).catch(e => { els.status.textContent = 'Slack test error: ' + e.message; });
+    });
   });
 
   function saveNotifyCfg() {
     notifyCfg = {
       on: els.notifyOn.checked,
       webhook: els.notifyHook.value.trim(),
-      threshold: Math.max(1, parseInt(els.notifyThreshold.value, 10) || 5)
+      threshold: Math.max(1, parseInt(els.notifyThreshold.value, 10) || 5),
+      varName: (els.notifyVar.value || 'message').trim() || 'message'
     };
     browser.storage.local.set({ qualyNotify: notifyCfg }).catch(() => {});
+    els.notifyVarWrap.hidden = !/\/triggers\//.test(notifyCfg.webhook);
     maybeNotify(); // in case the threshold was lowered below the queue
   }
 
@@ -191,6 +194,8 @@
       els.notifyOn.checked = !!notifyCfg.on;
       els.notifyHook.value = notifyCfg.webhook || '';
       els.notifyThreshold.value = notifyCfg.threshold || 5;
+      els.notifyVar.value = notifyCfg.varName || 'message';
+      els.notifyVarWrap.hidden = !/\/triggers\//.test(notifyCfg.webhook || '');
     }
 
     warehouseId = p.warehouseId || warehouseId || 'IND8';
@@ -694,11 +699,27 @@
     const lines = batch.slice(0, 12).map(e =>
       `• ${e.bin || '?'} — ${(e.itemName || '').slice(0, 60)} (${e.source || 'error'}${e.lpn ? ', ' + e.lpn : ''})`);
     if (batch.length > 12) lines.push(`…and ${batch.length - 12} more`);
-    const text = `:rotating_light: *${batch.length} new pick errors* at ${warehouseId} `
+    const text = `:rotating_light: ${batch.length} new pick errors at ${warehouseId} `
       + `(checklist now ${currentErrors.length})\n` + lines.join('\n');
-    browser.runtime.sendMessage({ type: 'notify', webhook: notifyCfg.webhook, text })
-      .then(r => { if (r && r.error) els.status.textContent = 'Slack: ' + r.error; })
-      .catch(() => {});
+    postSlack(text);
+  }
+
+  // Shape the body for the webhook type.
+  // /triggers/  → Slack Workflow Builder: one flat variable { <varName>: text }
+  // /services/  → classic Incoming Webhook: { text }
+  function slackBody(text) {
+    if (/\/triggers\//.test(notifyCfg.webhook || '')) {
+      const v = (notifyCfg.varName || 'message').trim() || 'message';
+      return { [v]: text };
+    }
+    return { text };
+  }
+
+  function postSlack(text) {
+    if (!notifyCfg.webhook) return Promise.resolve({ error: 'no webhook' });
+    return browser.runtime.sendMessage({ type: 'notify', webhook: notifyCfg.webhook, body: slackBody(text) })
+      .then(r => { if (r && r.error) els.status.textContent = 'Slack: ' + r.error; return r; })
+      .catch(e => ({ error: e.message }));
   }
 
   async function autoCrawl() {

@@ -132,13 +132,22 @@ last one. **Clear checklist** resets everything for a fresh start (e.g. new
 shift).
 
 ### 6. Slack notifications
-Open **🔔 Slack notifications**, paste a Slack **Incoming Webhook** URL, set the
-threshold (default every 5), and enable. Each time N new pick errors arrive
-(from a crawl, fetch, or paste) the extension posts a Slack message listing the
-new bins/items. The POST is sent from the background script (which holds the
-`hooks.slack.com` host permission), so there's no page CORS issue. The initial
-backfill is not notified — only errors that arrive after the page loads. Use
-**Send test** to verify the webhook.
+Open **🔔 Slack notifications**, paste a Slack webhook URL, set the threshold
+(default every 5), and enable. Each time N new pick errors arrive (from a crawl,
+fetch, or paste) a Slack message lists the new bins/items. Sent from the
+background script (which holds the `hooks.slack.com` host permission), so no page
+CORS issue. Only errors arriving after the page loads count (the initial backfill
+is not spammed). **Send test** verifies the webhook.
+
+Two webhook types are supported (auto-detected by URL):
+
+- **Workflow webhook** (`hooks.slack.com/triggers/…`) — no app/admin approval
+  needed. In **Workflow Builder**: start with *“Starts with a webhook”*, add a
+  **Text** variable (default name `message`), add a step that posts that variable
+  to a channel, publish, and copy the URL. Put the variable's name in **Message
+  variable name**. The extension sends `{ "<varName>": "<message>" }`.
+- **Incoming Webhook** (`hooks.slack.com/services/…`) — the classic app webhook.
+  The extension sends `{ "text": "<message>" }`.
 
 ## Permissions (added)
 
