@@ -60,12 +60,17 @@
       sides[(p.bin.mod === 'A' || p.bin.mod === 'B') ? p.bin.mod : '?'].push(p);
     }
 
-    // Do the start's side first (0 extra crossings), then the other side, then
-    // any unknown-mod bins. Empty sides are skipped.
-    let order = startSide === 'A' ? ['A', 'B', '?']
-             : startSide === 'B' ? ['B', 'A', '?']
-             : ['B', 'A', '?'];                     // default: desk side first
-    order = order.filter(s => sides[s].length);
+    // Finish on the B (desk) side: B is always visited LAST when it has bins,
+    // so the walk ends near the desk. A first, then any unknown-mod bins, then
+    // B. (When you start on B with A bins present this costs a cross out and
+    // back — that's the price of ending at the desk.)
+    const order = ['A', '?', 'B'].filter(s => sides[s].length);
+
+    // Green-mile crossings = side changes across the actual walk (incl. start).
+    const visited = order.filter(s => s === 'A' || s === 'B');
+    const seq = (startSide === 'A' || startSide === 'B') ? [startSide].concat(visited) : visited;
+    let crossings = 0;
+    for (let i = 1; i < seq.length; i++) if (seq[i] !== seq[i - 1]) crossings++;
 
     const stops = [];
     let n = 1;
@@ -104,7 +109,7 @@
       stops,
       unrouted,
       startBin,
-      crossings: Math.max(0, order.filter(s => s !== '?').length - 1),
+      crossings,
       estAisleChanges: Math.max(0, corridorCount - 1)
     };
   }

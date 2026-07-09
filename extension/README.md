@@ -92,19 +92,20 @@ corridor**, split by the "green mile" highway — so `A112` and `B112` are on th
 same line. Pickers travel the green mile horizontally by aisle number and dip up
 into A or down into B.
 
-The **green mile between A and B is expensive to cross**, so `lib/pathfinding.js`
-routes to **minimize crossings**, then walk-distance:
+The **green mile between A (exit side) and B (desk side) is expensive to cross**,
+so `lib/pathfinding.js` routes by side, and **finishes on the B/desk side**:
 
-1. **Do the start's side first**, cross the green mile **once**, then the other
-   side — never bouncing back and forth (a route touches ≥2 sides ⇒ 1 crossing).
+1. **B is visited last** whenever it has bins, so the walk ends near the desk.
+   Order is A → (unknown) → B. (Starting on B with A bins present costs a cross
+   out and back — the price of ending at the desk.)
 2. **Both sides sweep from the same start aisle** (the crossing sits near the
    start/desk), so the walk keeps **one direction** instead of zig-zagging.
    Within a side, head to the nearer end first, then straight to the far end.
 3. Within an aisle, order bins by slot (dip in/out).
 
-Example — start `B190`, errors `B101, A102, A183` → **`B101 → A183 → A102`**
-(1 crossing): finish the B side, cross once near the start, then sweep the A side
-downward. The status line shows the stop count and crossing count.
+Example — start `B190`, errors `B101, A102, A183` → **`A183 → A102 → B101`**:
+sweep the A side downward, then cross back to finish at `B101` near the desk.
+The status line shows the stop count and green-mile crossing count.
 
 Bins on locked levels are flagged with 🔒 so the picker knows a key is needed.
 The bottom shelf is always `A`; the top letter varies by aisle (`G` on some,
