@@ -126,7 +126,10 @@ re-surfaces an error you already checked** — even after its report has been
 downloaded (the same doc keeps coming back from ATLAS while it's inside the time
 window; the extension remembers it). The checklist, decisions, and start bin are
 persisted, so a reload resumes right where you left off. Decisions show live on
-the cards (✓ confirmed / ✕ denied). When you finish the pending items, the report
+the cards (✓ confirmed / ✕ denied). Checked cards are **hidden by default** to
+keep the list uncluttered — a "N checked hidden — click to show" note (and the
+**Show checked** toggle) reveals them when needed. When you finish the pending
+items, the report
 **auto-downloads**; each report is the **delta** of newly-checked items since the
 last one. **Clear checklist** resets everything for a fresh start (e.g. new
 shift).

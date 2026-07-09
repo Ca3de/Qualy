@@ -41,8 +41,33 @@
     clearBtn: $('clearBtn'),
     notifyOn: $('notifyOn'), notifyHook: $('notifyHook'),
     notifyThreshold: $('notifyThreshold'), notifyTest: $('notifyTest'),
-    notifyVar: $('notifyVar'), notifyVarWrap: $('notifyVarWrap')
+    notifyVar: $('notifyVar'), notifyVarWrap: $('notifyVarWrap'),
+    showChecked: $('showChecked'), checkedNote: $('checkedNote')
   };
+
+  els.showChecked.addEventListener('change', applyShowChecked);
+  els.checkedNote.addEventListener('click', () => {
+    els.showChecked.checked = true;
+    applyShowChecked();
+  });
+
+  // Hide already-checked cards to keep the list uncluttered (toggle to show).
+  function applyShowChecked() {
+    const show = els.showChecked.checked;
+    els.stops.classList.toggle('hide-checked', !show);
+    browser.storage.local.set({ qualyShowChecked: show }).catch(() => {});
+    updateCheckedNote();
+  }
+
+  function updateCheckedNote() {
+    const checked = currentErrors.filter(e => decisions.has(errorKey(e))).length;
+    if (!els.showChecked.checked && checked > 0) {
+      els.checkedNote.hidden = false;
+      els.checkedNote.textContent = `✓ ${checked} checked error${checked > 1 ? 's' : ''} hidden — click to show`;
+    } else {
+      els.checkedNote.hidden = true;
+    }
+  }
 
   els.autoCrawl.addEventListener('change', toggleAutoCrawl);
   els.autoMin.addEventListener('change', () => { if (els.autoCrawl.checked) toggleAutoCrawl(); });
@@ -184,9 +209,12 @@
 
   // ---- Load payload ---------------------------------------------------------
 
-  browser.storage.local.get(['qualyPayload', 'qualySession', 'qualyAuto', 'qualyNotify']).then((r) => {
+  browser.storage.local.get(['qualyPayload', 'qualySession', 'qualyAuto', 'qualyNotify', 'qualyShowChecked']).then((r) => {
     const p = (r && r.qualyPayload) || {};
     const hadSession = restoreSession(r && r.qualySession);
+
+    els.showChecked.checked = !!(r && r.qualyShowChecked);
+    applyShowChecked();
 
     // Restore notification config.
     if (r && r.qualyNotify) {
@@ -339,6 +367,7 @@
     els.stops.innerHTML = '';
     els.stops.appendChild(frag);
     applyDecisionMarks();
+    updateCheckedNote();
   }
 
   function renderStop(s) {
@@ -777,6 +806,7 @@
       if (c.dataset.key === k) applyDecClass(c, decisions.get(k));
     });
     updateMeta();
+    updateCheckedNote();
   }
 
   function applyDecisionMarks() {

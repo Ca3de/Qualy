@@ -146,7 +146,15 @@ body {
 .stop.done-confirm { border-left: 4px solid #1a7f37; }
 .stop.done-confirm .order { background: #1a7f37; }
 .stop.done-confirm .stop-status { color: #1a7f37; }
+.stops.hide-checked .stop.done-confirm,
+.stops.hide-checked .stop.done-deny { display: none; }
 .stop.done-deny { border-left: 4px solid var(--reject); opacity: 0.72; }
+.checked-note {
+  margin: 6px 20px 0; padding: 6px 10px; font-size: 12px; color: var(--muted);
+  background: var(--card); border: 1px dashed var(--line); border-radius: 6px;
+  max-width: 1000px; cursor: pointer;
+}
+.checked-note:hover { color: var(--ink); }
 .stop.done-deny .order { background: var(--reject); }
 .stop.done-deny .stop-status { color: var(--reject); }
 
