@@ -93,11 +93,14 @@ same line. Pickers travel the green mile horizontally by aisle number and dip up
 into A or down into B.
 
 `lib/pathfinding.js` solves for the **shortest walk**, no fixed direction or
-finish side. Each bin is placed on the map — `x` = aisle number, depth into the
-rack = `600 − slot` (the green mile is the high-slot highway) — and the distance
-between two bins is: same aisle & side → `|Δdepth|`; otherwise → `depth_a +
-horizontal(|Δaisle|) + depth_b` (out to the mile, along it, back in). This makes
-deep A↔B crossings cost their real distance while horizontal travel dominates.
+finish side. Each bin is placed on the map with scales measured off the floor
+plan — **15 px per aisle number, 0.6 px per slot** — with aisles 100–138 (left
+block) then 143–266 (right block) separated by a **divider gap** (139–142 don't
+exist). `x` = aisle position, depth into the rack = `600 − slot` (the green mile
+is the high-slot highway). Distance between two bins: same aisle & side →
+`|Δdepth|`; otherwise → `depth_a + |Δx| + depth_b` (out to the mile, along it,
+back in). Deep A↔B crossings cost their real distance; horizontal travel
+dominates.
 
 The route is the **shortest open path from your start** through all bins:
 - **≤13 bins → exact** (Held-Karp DP — provably optimal).

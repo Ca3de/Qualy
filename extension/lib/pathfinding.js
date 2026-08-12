@@ -25,10 +25,16 @@
 
   const Bin = root.QualyBin;
 
-  // Map scale: ~15px between adjacent aisle numbers, ~0.6px per slot unit.
-  // Horizontal travel dominates; depth matters mainly for A<->B crossings.
+  // Map scales, measured off the IND8 floor map: 15px between adjacent aisle
+  // numbers, 0.6px per slot unit. Horizontal travel dominates; depth matters
+  // mainly for A<->B crossings.
   const AISLE_PX = 15;
   const SLOT_PX = 0.6;
+  // Aisles run 100..138 (left block) then 143..266 (right block) with a physical
+  // divider between — 139..142 don't exist. Right-block aisles get an extra gap.
+  const DIVIDER_AISLE = 138;
+  const DIVIDER_PX = 65;
+  const xOf = (aisle) => aisle * AISLE_PX + (aisle > DIVIDER_AISLE ? DIVIDER_PX : 0);
   // The green mile sits at the high-slot end (slots run ~100..570, 500+ against
   // the mile). Depth into the rack from the highway = distance below this.
   const MILE_SLOT = 600;
@@ -48,7 +54,7 @@
     if (a.aisle === b.aisle && a.side === b.side) {
       return Math.abs(depthA - depthB);
     }
-    return depthA + Math.abs(a.aisle - b.aisle) * AISLE_PX + depthB;
+    return depthA + Math.abs(xOf(a.aisle) - xOf(b.aisle)) + depthB;
   }
 
   /**
