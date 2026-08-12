@@ -92,20 +92,19 @@ corridor**, split by the "green mile" highway — so `A112` and `B112` are on th
 same line. Pickers travel the green mile horizontally by aisle number and dip up
 into A or down into B.
 
-The **green mile between A (exit side) and B (desk side) is expensive to cross**,
-so `lib/pathfinding.js` routes by side, and **finishes on the B/desk side**:
+`lib/pathfinding.js` solves for the **shortest walk**, no fixed direction or
+finish side. Each bin is placed on the map — `x` = aisle number, depth into the
+rack = `600 − slot` (the green mile is the high-slot highway) — and the distance
+between two bins is: same aisle & side → `|Δdepth|`; otherwise → `depth_a +
+horizontal(|Δaisle|) + depth_b` (out to the mile, along it, back in). This makes
+deep A↔B crossings cost their real distance while horizontal travel dominates.
 
-1. **B is visited last** whenever it has bins, so the walk ends near the desk.
-   Order is A → (unknown) → B. (Starting on B with A bins present costs a cross
-   out and back — the price of ending at the desk.)
-2. **Both sides sweep from the same start aisle** (the crossing sits near the
-   start/desk), so the walk keeps **one direction** instead of zig-zagging.
-   Within a side, head to the nearer end first, then straight to the far end.
-3. Within an aisle, order bins by slot (dip in/out).
+The route is the **shortest open path from your start** through all bins:
+- **≤13 bins → exact** (Held-Karp DP — provably optimal).
+- **more → nearest-neighbour + 2-opt** (near-optimal, sub-millisecond).
 
-Example — start `B190`, errors `B101, A102, A183` → **`A183 → A102 → B101`**:
-sweep the A side downward, then cross back to finish at `B101` near the desk.
-The status line shows the stop count and green-mile crossing count.
+The status line shows the stop count and how many green-mile crossings the
+optimal route needed.
 
 Bins on locked levels are flagged with 🔒 so the picker knows a key is needed.
 The bottom shelf is always `A`; the top letter varies by aisle (`G` on some,
