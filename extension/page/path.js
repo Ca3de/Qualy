@@ -287,8 +287,10 @@
         els.status.textContent = `ATLAS returned 0 usable errors for that window (matched ${resp.total || 0} docs).`;
         els.stops.innerHTML = '<div class="empty">No errors in that time window. Widen the lookback, change the error type, or use the paste fallback.</div>';
       } else {
-        els.status.textContent = `Pulled ${resp.errors ? resp.errors.length : 0} · +${added} new · ${currentErrors.length} in checklist.`;
-        build();
+        els.status.textContent = `Pulled ${resp.errors ? resp.errors.length : 0} · +${added.length} new · ${currentErrors.length} in checklist.`;
+        // Append new items to an existing route; full build only on first pull.
+        if (lastRoute && lastRoute.stops.length) appendToRoute(added);
+        else build();
       }
     } catch (err) {
       els.status.textContent = 'ATLAS error: ' + err.message + ' — try the CSV/TSV paste fallback.';
@@ -703,15 +705,42 @@
   // skipping anything already decided). Returns how many were added.
   function mergeErrors(incoming) {
     const known = new Set(currentErrors.map(errorKey));
-    let added = 0;
+    const added = [];
     for (const e of incoming || []) {
       const k = errorKey(e);
       if (!k || known.has(k) || decisions.has(k)) continue;
-      known.add(k); currentErrors.push(e); added++;
+      known.add(k); currentErrors.push(e); added.push(e);
       if (notifyArmed && notifyCfg.on) notifyQueue.push(e);
     }
     maybeNotify();
-    return added;
+    return added; // array of newly-added error records
+  }
+
+  // Route just the NEW items and append them to the end of the current route,
+  // so a crawl mid-walk never inserts ahead of the stop you're checking. Only
+  // the explicit "Build path" button re-optimizes the whole route.
+  async function appendToRoute(newItems) {
+    if (!newItems || !newItems.length) return;
+    if (!lastRoute || !lastRoute.stops.length) { await build(); return; }
+    const startBin = els.start.value.trim();
+    warehouseId = els.wh.value.trim() || 'IND8';
+    let resp;
+    try {
+      resp = await browser.runtime.sendMessage({
+        type: 'buildPath',
+        payload: { errors: newItems, startBin, warehouseId, enrich: els.enrich.checked }
+      });
+    } catch (e) { resp = null; }
+    if (!resp || resp.error || !resp.route) { await build(); return; } // fallback
+    const base = lastRoute.stops.length;
+    const appended = resp.route.stops.map((s, i) => Object.assign({}, s, { order: base + i + 1 }));
+    lastRoute.stops = lastRoute.stops.concat(appended);
+    if (resp.route.unrouted && resp.route.unrouted.length) {
+      lastRoute.unrouted = (lastRoute.unrouted || []).concat(resp.route.unrouted);
+    }
+    render(lastRoute, startBin);
+    updateMeta();
+    persistSession();
   }
 
   // Slack ping every `threshold` new pick errors. Coalesces a big batch into a
@@ -763,13 +792,15 @@
       else { opts.fromISO = range.fromISO; opts.toISO = range.toISO; }
       const resp = await browser.runtime.sendMessage({ type: 'atlasSearch', opts });
       if (!resp || resp.error) { els.status.textContent = 'Auto-crawl: ' + (resp ? resp.error : 'no response'); return; }
+      // Were we idle on the summary/waiting screen (nothing left to check)?
+      const wasIdle = confirmState && !$('overlay').hidden && pendingStops().length === 0;
       const added = mergeErrors(resp.errors || []);
       const t = new Date().toLocaleTimeString();
-      if (added) {
-        await build();
-        els.status.textContent = `Auto-crawl: +${added} new error(s) added to checklist (${t})`;
-        // If a walk is open and idle on the summary, advance into the new items.
-        if (confirmState && !$('overlay').hidden) renderConfirmStep();
+      if (added.length) {
+        await appendToRoute(added);   // appended at the END, current walk untouched
+        els.status.textContent = `Auto-crawl: +${added.length} new appended to checklist (${t})`;
+        // Only advance the overlay if the user was idle (not mid-decision).
+        if (wasIdle && !$('overlay').hidden) renderConfirmStep();
       } else {
         els.status.textContent = `Auto-crawl: no new errors (${t})`;
       }
@@ -852,8 +883,9 @@
     if (!errors.length) { els.status.textContent = 'Could not find bin + fnsku/asin columns in the pasted text.'; return; }
     const added = mergeErrors(errors);
     updateMeta();
-    els.status.textContent = `Pasted ${errors.length} rows · +${added} new · ${currentErrors.length} in checklist.`;
-    build();
+    els.status.textContent = `Pasted ${errors.length} rows · +${added.length} new · ${currentErrors.length} in checklist.`;
+    if (lastRoute && lastRoute.stops.length) appendToRoute(added);
+    else build();
   });
 
   const FIELD_ALIASES = {

@@ -133,7 +133,10 @@ manager, ASIN/FNSKU, item, qty, reason) plus confirmed/denied counts.
 
 ### 5. Auto-crawl (continuous mode)
 Tick **Auto-crawl** and the page re-queries ATLAS every N minutes and **merges
-only new errors into the checklist** (dedup by bin+LPN+time). Checked errors and
+only new errors into the checklist** (dedup by bin+LPN+time). New errors are
+**appended to the end** of the route (never inserted ahead of the stop you're
+checking); the walk you're on is left untouched. Only the **Build path** button
+re-optimizes the whole route from scratch. Checked errors and
 their decisions are kept permanently for the session, so a crawl **never
 re-surfaces an error you already checked** — even after its report has been
 downloaded (the same doc keeps coming back from ATLAS while it's inside the time
