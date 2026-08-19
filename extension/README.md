@@ -125,9 +125,15 @@ Once a route is built, **Start confirmation walk** steps through the stops one
 at a time. Each card shows the next location, error type (reject/short), LPN,
 AA, item image + details, and two actions:
 
+- **Note (optional)** — a text box above the buttons; add any note, then Confirm
+  or Deny as usual. Captured on the item and shown in the report's Note column.
 - **Confirm error** — records it as a real error. **Rejects also prompt for a
   reason on confirm** (shorts confirm with no reason).
 - **Deny** — prompts for a reason, then records it (both shorts and rejects).
+
+Each stop card also has a **✓ Mark checked** button to decide a single item out
+of walk order (e.g. one you already checked) — it's remembered and included in
+the report just like a walked item.
 
 After the last stop, a summary appears with a **Download report (.md)** button.
 The report lists every checked item (result, bin, aisle, error type, LPN, AA,

@@ -423,6 +423,7 @@
         <div class="links">
           ${fcLink ? `<a href="${escapeAttr(fcLink)}" target="_blank" rel="noopener">FC Research ↗</a>` : ''}
           ${rodeoLink ? `<a href="${escapeAttr(rodeoLink)}" target="_blank" rel="noopener">Rodeo ↗</a>` : ''}
+          <button type="button" class="btn-check">✓ Mark checked</button>
         </div>
       </div>`;
     return wrap;
@@ -432,6 +433,16 @@
 
   document.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'startConfirm') startConfirm();
+  });
+
+  // "✓ Mark checked" on a stop card → decide that single item out of order.
+  els.stops.addEventListener('click', (e) => {
+    const btn = e.target.closest && e.target.closest('.btn-check');
+    if (!btn) return;
+    const card = btn.closest('.stop');
+    if (!card || !lastRoute) return;
+    const stop = lastRoute.stops.find(s => keyOfStop(s) === card.dataset.key);
+    if (stop) checkStop(stop);
   });
 
   // Stops still needing a decision, in route order.
@@ -464,10 +475,25 @@
       }
       return renderConfirmSummary();
     }
+    showDecisionCard(pend[0], false);
+  }
 
-    const s = pend[0];
+  // Mark a single item out of walk order (e.g. one you already checked). Opens
+  // the same decide card for just that item; it's then remembered and included
+  // in the report exactly like a walked item.
+  function checkStop(stop) {
+    if (!stop) return;
+    confirmState = { single: true };
+    $('overlay').hidden = false;
+    document.body.style.overflow = 'hidden';
+    showDecisionCard(stop, true);
+  }
+
+  function showDecisionCard(s, single) {
     confirmState.current = s;
-    const total = lastRoute.stops.length;
+    confirmState.single = single;
+    const total = lastRoute ? lastRoute.stops.length : 1;
+    const pend = pendingStops();
     const done = total - pend.length;
 
     const it = s.item || {};
@@ -475,10 +501,11 @@
     const img = fc.imageDataUrl || fc.imageUrl;
     const isReject = it.source === 'reject';
     const name = it.itemName || fc.title || '';
+    const prior = decisions.get(keyOfStop(s)); // existing note/decision, if any
 
     $('ovCard').innerHTML = `
       <div class="ov-top">
-        <span class="ov-prog">Location ${done + 1} of ${total}${pend.length > 1 ? ` · ${pend.length} left` : ''}</span>
+        <span class="ov-prog">${single ? 'Mark this item' : `Location ${done + 1} of ${total}${pend.length > 1 ? ` · ${pend.length} left` : ''}`}</span>
         <button class="ov-x" id="ovClose" title="Exit">✕</button>
       </div>
       <div class="ov-bin">${escapeHtml(s.bin)}</div>
@@ -497,6 +524,10 @@
           <div class="ov-kv"><span>ASIN / FNSKU</span><b>${escapeHtml(it.asin || fc.asin || '—')} / ${escapeHtml(it.fnsku || '—')}</b></div>
           ${it.rejectReason ? `<div class="ov-kv"><span>Reject reason</span><b>${escapeHtml(it.rejectReason)}</b></div>` : ''}
         </div>
+      </div>
+      <div class="ov-note-field">
+        <label for="ovNoteInput">Note (optional)</label>
+        <textarea id="ovNoteInput" rows="2" placeholder="add any note — optional, then Confirm or Deny as usual">${escapeHtml(prior ? (prior.note || '') : '')}</textarea>
       </div>
       <div class="ov-actions" id="ovActions">
         <button class="btn deny" id="ovDeny">✕ Deny</button>
@@ -543,10 +574,13 @@
   function recordDecision(decision, reason) {
     const s = confirmState.current;
     if (!s) return;
-    decisions.set(keyOfStop(s), { stop: slimStop(s), decision, reason });
+    const noteEl = $('ovNoteInput');
+    const note = noteEl ? noteEl.value.trim() : '';
+    decisions.set(keyOfStop(s), { stop: slimStop(s), decision, reason, note });
     persistSession();
     markStopCard(s);
-    renderConfirmStep();
+    if (confirmState.single) closeConfirm();
+    else renderConfirmStep();
   }
 
   function confirmExitGuard() {
@@ -646,8 +680,8 @@
     lines.push(`- **Start location:** ${startBin}`);
     lines.push(`- **Checked:** ${results.length}  ·  **Confirmed:** ${confirmed}  ·  **Denied:** ${denied}`);
     lines.push('');
-    lines.push('| # | Result | Bin | Aisle | Lvl | Error | LPN | AA | Mgr | ASIN | FNSKU | Item | Qty | Reason |');
-    lines.push('|---|--------|-----|-------|-----|-------|-----|----|-----|------|-------|------|-----|--------|');
+    lines.push('| # | Result | Bin | Aisle | Lvl | Error | LPN | AA | Mgr | ASIN | FNSKU | Item | Qty | Reason | Note |');
+    lines.push('|---|--------|-----|-------|-----|-------|-----|----|-----|------|-------|------|-----|--------|------|');
     results.forEach((r, idx) => {
       const it = r.stop.item || {};
       const cells = [
@@ -664,7 +698,8 @@
         it.fnsku || '',
         mdCell(it.itemName || ''),
         it.quantity || '',
-        mdCell(r.reason || '')
+        mdCell(r.reason || ''),
+        mdCell(r.note || '')
       ];
       lines.push('| ' + cells.map(c => String(c)).join(' | ') + ' |');
     });
@@ -675,7 +710,7 @@
       lines.push('');
       results.filter(r => r.decision === 'denied').forEach(r => {
         const it = r.stop.item || {};
-        lines.push(`- **${r.stop.bin}** (${it.source === 'reject' ? 'reject' : 'short'}) — LPN ${it.lpn || '—'}, AA ${it.aa || '—'} — reason: ${r.reason}`);
+        lines.push(`- **${r.stop.bin}** (${it.source === 'reject' ? 'reject' : 'short'}) — LPN ${it.lpn || '—'}, AA ${it.aa || '—'} — reason: ${r.reason}${r.note ? ' — note: ' + r.note : ''}`);
       });
       lines.push('');
     }
