@@ -133,7 +133,9 @@ AA, item image + details, and two actions:
 
 Each stop card also has a **✓ Mark checked** button to decide a single item out
 of walk order (e.g. one you already checked) — it's remembered and included in
-the report just like a walked item.
+the report just like a walked item. The **✓ Mark all remaining** button applies
+one decision (with an optional shared note/reason) to every unchecked item at
+once.
 
 After the last stop, a summary appears with a **Download report (.md)** button.
 The report lists every checked item (result, bin, aisle, error type, LPN, AA,

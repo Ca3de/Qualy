@@ -433,7 +433,62 @@
 
   document.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'startConfirm') startConfirm();
+    if (e.target && e.target.id === 'bulkCheck') bulkMark();
   });
+
+  // Apply one decision to every unchecked item at once.
+  function bulkMark() {
+    if (!lastRoute) return;
+    const pend = pendingStops();
+    if (!pend.length) { els.status.textContent = 'Nothing left to check.'; return; }
+    confirmState = { bulk: true, pend };
+    $('overlay').hidden = false;
+    document.body.style.overflow = 'hidden';
+    renderBulkCard(pend);
+  }
+
+  function renderBulkCard(pend) {
+    const n = pend.length;
+    const anyReject = pend.some(s => (s.item || {}).source === 'reject');
+    $('ovCard').innerHTML = `
+      <div class="ov-top">
+        <span class="ov-prog">Mark ${n} remaining item${n > 1 ? 's' : ''}</span>
+        <button class="ov-x" id="ovClose" title="Close">✕</button>
+      </div>
+      <p class="ov-wait">Apply one decision to every unchecked item on the list. Each is remembered and added to the report.</p>
+      <div class="ov-note-field">
+        <label for="ovNoteInput">Note (optional — applied to all)</label>
+        <textarea id="ovNoteInput" rows="2" placeholder="optional note for all items"></textarea>
+      </div>
+      <div class="ov-note-field">
+        <label for="ovBulkReason">Reason ${anyReject ? '(required)' : '(required if denying)'}</label>
+        <input id="ovBulkReason" type="text" placeholder="reason applied to all" />
+      </div>
+      <div class="ov-actions">
+        <button class="btn deny" id="ovBulkDeny">✕ Deny all</button>
+        <button class="btn primary confirm" id="ovBulkConfirm">✓ Confirm all</button>
+      </div>
+      <div class="ov-actions"><button class="btn" id="ovBulkCancel">Cancel</button></div>`;
+    $('ovClose').onclick = closeConfirm;
+    $('ovBulkCancel').onclick = closeConfirm;
+    $('ovBulkConfirm').onclick = () => applyBulk('confirmed', anyReject);
+    $('ovBulkDeny').onclick = () => applyBulk('denied', true);
+  }
+
+  function applyBulk(decision, reasonRequired) {
+    const reason = ($('ovBulkReason').value || '').trim();
+    const note = ($('ovNoteInput').value || '').trim();
+    if (reasonRequired && !reason) {
+      $('ovBulkReason').focus(); $('ovBulkReason').classList.add('err'); return;
+    }
+    const pend = confirmState.pend || [];
+    pend.forEach(s => decisions.set(keyOfStop(s), { stop: slimStop(s), decision, reason, note }));
+    persistSession();
+    render(lastRoute, els.start.value.trim());
+    updateMeta();
+    closeConfirm();
+    els.status.textContent = `Marked ${pend.length} item(s) as ${decision}.`;
+  }
 
   // "✓ Mark checked" on a stop card → decide that single item out of order.
   els.stops.addEventListener('click', (e) => {

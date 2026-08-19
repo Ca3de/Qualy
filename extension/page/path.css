@@ -164,10 +164,11 @@ body {
 .ov-wait { font-size: 13px; color: var(--muted); line-height: 1.45; margin: 10px 2px 16px; }
 .ov-note-field { margin: 14px 0 4px; display: flex; flex-direction: column; gap: 5px; }
 .ov-note-field label { font-size: 12px; font-weight: 600; color: var(--muted); }
-.ov-note-field textarea {
+.ov-note-field textarea, .ov-note-field input[type="text"] {
   width: 100%; box-sizing: border-box; resize: vertical; font-size: 13px;
   padding: 8px; border: 1px solid #aab7b8; border-radius: 6px; font-family: inherit;
 }
+.ov-note-field input.err { border-color: var(--reject); }
 .stop .btn-check {
   margin-left: auto; padding: 4px 10px; font-size: 12px; font-weight: 600;
   border: 1px solid #1a7f37; color: #1a7f37; background: #fff; border-radius: 4px; cursor: pointer;
